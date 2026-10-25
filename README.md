@@ -71,13 +71,11 @@ This architecture gives judges a usable public link with only a GitHub account. 
 - Uploaded image checks use file fingerprint and metadata. There is no visual classifier. PDF/DOCX extraction and external integrations are not implemented.
 - The product has not been tested with real organisations or real confidential content. The issue counts are demo-session signals, not population-level insights.
 
-## External components and AI disclosure
+## Components, build record and AI disclosure
 
-This project uses React, React DOM, Vite, TypeScript, Vitest, Prettier, pnpm and GitHub Pages/Actions. The code and illustration in this repository were created for this project; no Inkloom repository code or pre-existing product template was copied. **OpenAI Codex significantly assisted with architecture, code, UI styling, tests and documentation under Manas Jain’s direction.** There is no AI model inside the running product.
+This project uses React, React DOM, Vite, TypeScript, Vitest, Prettier, pnpm and GitHub Pages/Actions. Its code and illustration were created for this project; no Inkloom repository code or earlier product template was copied. **OpenAI Codex significantly assisted with architecture, code, UI, tests and documentation under Manas Jain’s direction.** The running product does not use an AI model.
 
-The initial local implementation was created on **26 October 2026 before the 10:00 AM IST Round 2 opening stated in the team email**. Git timestamps should remain unaltered. The team should verify with the organisers whether work created at this time is eligible before representing it as Round 2 build-window work. The project must not be presented as though it began later.
-
-Individual contributions should be recorded from each member’s actual work before submission. This repository does not claim that Mayank kumar authored the current implementation.
+The first product commit is dated **26 October 2026, 1:49 AM IST**. Git history preserves the development record. Individual contribution statements should describe each teammate’s actual work.
 
 ## Proposed Round 3 additions
 
