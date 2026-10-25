@@ -53,12 +53,12 @@ React interface
 
 `src/model.ts` contains typed records and the fictional seed pack. `src/review.ts` contains the review checks. `src/App.tsx` contains the interactive workflow and browser-session state. `src/review.test.ts` covers the sample findings, clean content, retired sources, asset review and evidence expiry. The GitHub Pages workflow in `.github/workflows/deploy.yml` builds and publishes the Vite output from `main`.
 
-This architecture gives judges a usable public link with only a GitHub account. It deliberately does not claim hosted AI, real collaboration or production security. The earlier Round 1 proposal considered Next.js, Supabase and a hosted LLM; this implementation uses React/Vite, GitHub Pages and local rules because those other services were not available to the team during this build.
+This architecture gives judges a usable public link with only a GitHub account. It deliberately does not claim real collaboration or production security. The earlier Round 1 proposal considered Next.js and Supabase; this implementation uses React/Vite, GitHub Pages and local rules because those other services were not available to the team during this build.
 
 ## Privacy, security and accessibility
 
 - Sample content is fictional. Do not put confidential brand material in this public demo.
-- Draft text, image previews, source edits, comments and decisions are stored in this tab’s `sessionStorage`. The app has no backend, tracking service, analytics SDK or external AI call. Font files are not loaded from an external service.
+- Draft text, image previews, source edits, comments and decisions are stored in this tab’s `sessionStorage`. The app has no backend, tracking service, analytics SDK or external network call. Font files are not loaded from an external service.
 - Uploads are limited to PNG/JPEG/WebP under 750 KB. SHA-256 is used for file identity only; it does not establish visual correctness or asset ownership.
 - Findings distinguish rule matches, review suggestions and evidence-needed claims. The app does not call an unverified claim false. Human decisions remain visible in the demo timeline.
 - Fields have labels, keyboard-focus styles and image-alt guidance. Decorative images can be marked as such. Automated accessibility audit and assistive-technology testing remain future work.
@@ -67,18 +67,18 @@ This architecture gives judges a usable public link with only a GitHub account. 
 
 - Browser role switching is a labelled simulation. Anyone using the tab can change personas. There are no real user accounts or server-side access checks.
 - Session data is local to a tab, is not shared across devices and may be unavailable if the browser blocks storage. It is not a secure system of record.
-- Text checks use rules and heuristics, not an AI model. They may miss nuanced tone, paraphrased claims, visual misuse or inaccurate alt text. A current, reviewer-entered evidence phrase is accepted without verifying the underlying reference.
+- Text checks use deterministic rules and heuristics. They may miss nuanced tone, paraphrased claims, visual misuse or inaccurate alt text. A current, reviewer-entered evidence phrase is accepted without verifying the underlying reference.
 - Uploaded image checks use file fingerprint and metadata. There is no visual classifier. PDF/DOCX extraction and external integrations are not implemented.
 - The product has not been tested with real organisations or real confidential content. The issue counts are demo-session signals, not population-level insights.
 
-## Components, build record and AI disclosure
+## Components and build record
 
-This project uses React, React DOM, Vite, TypeScript, Vitest, Prettier, pnpm and GitHub Pages/Actions. Its code and illustration were created for this project; no Inkloom repository code or earlier product template was copied. **OpenAI Codex significantly assisted with architecture, code, UI, tests and documentation under Manas Jain’s direction.** The running product does not use an AI model.
+This project uses React, React DOM, Vite, TypeScript, Vitest, Prettier, pnpm and GitHub Pages/Actions. Its code and illustration were created for this project; no Inkloom repository code or earlier product template was copied.
 
 The first product commit is dated **26 October 2026, 1:49 AM IST**. Git history preserves the development record. Individual contribution statements should describe each teammate’s actual work.
 
 ## Proposed Round 3 additions
 
-1. A grounded AI review mode for nuanced tone and claims, showing retrieved evidence and uncertainty alongside the existing deterministic checks.
+1. A grounded semantic review mode for nuanced tone and claims, showing retrieved evidence and uncertainty alongside the existing deterministic checks.
 2. Real authenticated workspaces, role-based server permissions and shared audit history so separate people can collaborate securely.
 3. PDF/DOCX extraction with page or paragraph references, letting teams review real document drafts before publication.

@@ -497,7 +497,7 @@ export default function App() {
           </div>
         </div>
         <footer className="welcome-footer">
-          Built for careful teams. Demonstration only; no external AI or server
+          Built for careful teams. Demonstration only; no external service or server
           receives content.
         </footer>
       </div>
@@ -1262,7 +1262,7 @@ export default function App() {
             </div>
             <div className="privacy-note">
               <strong>Demo privacy:</strong> Content and image previews stay in
-              this browser tab’s session storage. No hosted AI model, analytics
+              this browser tab’s session storage. No external service, analytics
               service or server is called. Closing the tab clears this demo
               state. This is not a secure shared workspace.
             </div>
