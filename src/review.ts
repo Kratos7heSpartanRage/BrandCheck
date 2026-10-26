@@ -1,4 +1,5 @@
 import type {
+  ApprovedAsset,
   DraftBody,
   EvidenceRecord,
   Finding,
@@ -20,6 +21,7 @@ export function reviewDraft(
   sources: Source[],
   terms: TermRule[],
   evidence: EvidenceRecord[] = [],
+  approvedAssets: ApprovedAsset[] = [],
 ): Finding[] {
   const active = new Map(
     sources
@@ -52,30 +54,40 @@ export function reviewDraft(
   }
 
   const claimSource = active.get("CLAIM-001");
-  const numericClaim = text.match(
-    /\b(?:\d+(?:\.\d+)?\s?(?:x|×|%|percent|times)|double|triple)\b[^.!?\n]{0,60}/i,
-  );
-  const supportedClaim = evidence.some(
-    (record) =>
-      active.has(record.sourceId) &&
-      record.expiresAt >= new Date().toISOString().slice(0, 10) &&
-      numericClaim?.[0].toLowerCase().includes(record.claim.toLowerCase()),
-  );
-  if (claimSource && numericClaim && !supportedClaim)
-    findings.push(
-      makeFinding(claimSource, {
-        id: "claim:numeric",
-        category: "Claims",
-        severity: "Needs attention",
-        evidenceStatus: "Evidence needed",
-        location: "Draft text",
-        excerpt: numericClaim[0].trim(),
-        explanation:
-          "This sounds like a measurable performance claim. The approved pack does not contain evidence for it. BrandCheck has not determined whether it is true or false.",
-        suggestion:
-          "Link current approved evidence for reviewer assessment, or use the approved non-quantified description: “designed to simplify daily work.”",
-      }),
+  const numericClaims = [
+    ...text.matchAll(
+      /\b(?:\d+(?:\.\d+)?\s?(?:x|×|%|percent|times)(?!\w)|double\b|triple\b)/gi,
+    ),
+  ];
+  for (const [index, numericClaim] of numericClaims.entries()) {
+    const start = numericClaim.index ?? 0;
+    const nextStart = numericClaims[index + 1]?.index ?? text.length;
+    const excerpt = text
+      .slice(start, Math.min(nextStart, start + 60))
+      .split(/[.!?\n]/, 1)[0]
+      .trim();
+    const supportedClaim = evidence.some(
+      (record) =>
+        active.has(record.sourceId) &&
+        record.expiresAt >= new Date().toISOString().slice(0, 10) &&
+        excerpt.toLowerCase().includes(record.claim.trim().toLowerCase()),
     );
+    if (claimSource && !supportedClaim)
+      findings.push(
+        makeFinding(claimSource, {
+          id: `claim:numeric:${index}`,
+          category: "Claims",
+          severity: "Needs attention",
+          evidenceStatus: "Evidence needed",
+          location: "Draft text",
+          excerpt,
+          explanation:
+            "This sounds like a measurable performance claim. The approved pack does not contain evidence for it. BrandCheck has not determined whether it is true or false.",
+          suggestion:
+            "Link current approved evidence for reviewer assessment, or use the approved non-quantified description: “designed to simplify daily work.”",
+        }),
+      );
+  }
 
   const toneSource = active.get("TONE-001");
   const absolute = text.match(
@@ -118,7 +130,7 @@ export function reviewDraft(
     if (
       assetSource &&
       body.image.source === "upload" &&
-      body.image.sha256 !== "approved-demo-asset"
+      !approvedAssets.some((asset) => asset.sha256 === body.image?.sha256)
     )
       findings.push(
         makeFinding(assetSource, {

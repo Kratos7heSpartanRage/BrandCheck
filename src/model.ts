@@ -37,6 +37,13 @@ export interface EvidenceRecord {
   sourceId: string;
 }
 
+export interface ApprovedAsset {
+  sha256: string;
+  name: string;
+  approvedAt: string;
+  sourceId: string;
+}
+
 export interface ImageRef {
   name: string;
   mime: string;
@@ -117,6 +124,7 @@ export interface AppState {
   sources: Source[];
   terms: TermRule[];
   evidence: EvidenceRecord[];
+  approvedAssets: ApprovedAsset[];
   findings: Finding[];
   reviewedFingerprint: string | null;
   dismissals: Dismissal[];
@@ -227,6 +235,7 @@ export const makeInitialState = (): AppState => ({
   sources: structuredClone(seedSources),
   terms: structuredClone(seedTerms),
   evidence: [],
+  approvedAssets: [],
   findings: [],
   reviewedFingerprint: null,
   dismissals: [],

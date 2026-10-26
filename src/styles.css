@@ -744,6 +744,34 @@ label select {
   font-size: 10px;
   color: #9cad9e;
 }
+.import-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 10px;
+}
+.import-row small {
+  color: #7c907f;
+  font-size: 10px;
+}
+.approved-assets-card {
+  margin-top: 19px;
+  padding: 23px;
+}
+.approved-assets-card h2 {
+  font-size: 17px;
+  margin: 5px 0;
+}
+.approved-assets-card p,
+.approved-assets-card li {
+  font-size: 11px;
+  color: #7c907f;
+  line-height: 1.55;
+}
+.approved-assets-card ul {
+  padding-left: 18px;
+}
 .count-badge {
   font-family: "Segoe UI", Arial, sans-serif;
   font-size: 10px;

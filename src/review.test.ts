@@ -91,4 +91,43 @@ describe("source-backed review", () => {
       ]).some((finding) => finding.sourceId === "CLAIM-001"),
     ).toBe(true);
   });
+
+  it("checks every quantified claim independently", () => {
+    const body = structuredClone(demoBody);
+    body.text = "NovaDesk offers 2x productivity and 30% savings.";
+    const findings = reviewDraft(body, seedSources, seedTerms);
+    expect(
+      findings.filter((finding) => finding.category === "Claims"),
+    ).toHaveLength(2);
+  });
+
+  it("accepts an exact reviewer-approved asset fingerprint", () => {
+    const body = structuredClone(demoBody);
+    body.text = "Meet NovaDesk.";
+    body.image = {
+      name: "campaign.png",
+      mime: "image/png",
+      bytes: 100,
+      sha256: "approved-fingerprint",
+      alt: "A NovaDesk campaign visual",
+      decorative: false,
+      source: "upload",
+    };
+    expect(
+      reviewDraft(
+        body,
+        seedSources,
+        seedTerms,
+        [],
+        [
+          {
+            sha256: "approved-fingerprint",
+            name: "campaign.png",
+            approvedAt: "2026-10-26T10:00:00.000Z",
+            sourceId: "ASSET-001",
+          },
+        ],
+      ),
+    ).toEqual([]);
+  });
 });

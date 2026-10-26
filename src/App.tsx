@@ -20,6 +20,7 @@ function loadState(): AppState {
         return {
           ...parsed,
           evidence: parsed.evidence ?? [],
+          approvedAssets: parsed.approvedAssets ?? [],
           reviewRuns: parsed.reviewRuns ?? 0,
         };
     }
@@ -51,6 +52,7 @@ export default function App() {
   const [claimReference, setClaimReference] = useState("");
   const [claimExpiry, setClaimExpiry] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
+  const textFileInput = useRef<HTMLInputElement>(null);
   const currentReview = state.reviewedFingerprint === FINGERPRINT(state.body);
   const latest = state.versions.at(-1);
 
@@ -121,6 +123,7 @@ export default function App() {
       state.sources,
       state.terms,
       state.evidence,
+      state.approvedAssets,
     );
     setState((previous) => ({
       ...previous,
@@ -369,6 +372,62 @@ export default function App() {
     }
     event.target.value = "";
   };
+  const importText = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = "";
+    if (!/\.(txt|md)$/i.test(file.name) || file.size > 100_000) {
+      setToast("Choose a TXT or Markdown file under 100 KB.");
+      return;
+    }
+    try {
+      const text = await file.text();
+      if (!text.trim() || text.length > 5_000) {
+        setToast("The file must contain 1–5,000 characters of text.");
+        return;
+      }
+      updateBody({ title: file.name, channel: "Document", text });
+      setToast("Text imported locally. Run review before submitting.");
+    } catch {
+      setToast("Could not read the document. Try a different text file.");
+    }
+  };
+  const approveAsset = () => {
+    const image = state.body.image;
+    if (
+      state.persona !== "reviewer" ||
+      state.status !== "awaiting" ||
+      !latest ||
+      !image ||
+      image.source !== "upload" ||
+      state.approvedAssets.some((asset) => asset.sha256 === image.sha256)
+    )
+      return;
+    setState((previous) => ({
+      ...previous,
+      approvedAssets: [
+        ...previous.approvedAssets,
+        {
+          sha256: image.sha256,
+          name: image.name,
+          approvedAt: time(),
+          sourceId: "ASSET-001",
+        },
+      ],
+      comments: [
+        ...previous.comments,
+        {
+          id: uid(),
+          at: time(),
+          by: "reviewer",
+          text: `Approved the uploaded asset “${image.name}” for this demo library (SHA-256: ${image.sha256}).`,
+          versionId: latest.id,
+        },
+      ],
+      reviewedFingerprint: null,
+    }));
+    setToast("Asset approved for future checks in this browser session.");
+  };
 
   const evidenceBuilder = (
     <section className="card evidence-builder">
@@ -497,8 +556,8 @@ export default function App() {
           </div>
         </div>
         <footer className="welcome-footer">
-          Built for careful teams. Demonstration only; no external service or server
-          receives content.
+          Built for careful teams. Demonstration only; no external service or
+          server receives content.
         </footer>
       </div>
     );
@@ -640,6 +699,7 @@ export default function App() {
                       <option>Website</option>
                       <option>Email</option>
                       <option>Social post</option>
+                      <option>Document</option>
                     </select>
                   </label>
                   <label>
@@ -672,6 +732,24 @@ export default function App() {
                   />
                   <small>{state.body.text.length} / 5,000 characters</small>
                 </label>
+                {state.persona === "creator" && state.status !== "awaiting" && (
+                  <div className="import-row">
+                    <button
+                      className="link-button"
+                      onClick={() => textFileInput.current?.click()}
+                    >
+                      Import TXT or Markdown draft
+                    </button>
+                    <small>Read in this browser · up to 5,000 characters</small>
+                    <input
+                      ref={textFileInput}
+                      type="file"
+                      accept=".txt,.md,text/plain,text/markdown"
+                      className="sr-only"
+                      onChange={importText}
+                    />
+                  </div>
+                )}
                 <div className="asset-section">
                   <div className="section-heading">
                     <div>
@@ -709,8 +787,27 @@ export default function App() {
                         <small>
                           {state.body.image.source === "approved-demo"
                             ? "Approved demo asset"
-                            : `Uploaded image · ${(state.body.image.bytes / 1024).toFixed(0)} KB`}
+                            : state.approvedAssets.some(
+                                  (asset) =>
+                                    asset.sha256 === state.body.image?.sha256,
+                                )
+                              ? "Reviewer-approved asset in this session"
+                              : `Uploaded image · ${(state.body.image.bytes / 1024).toFixed(0)} KB`}
                         </small>
+                        {state.persona === "reviewer" &&
+                          state.status === "awaiting" &&
+                          state.body.image.source === "upload" &&
+                          !state.approvedAssets.some(
+                            (asset) =>
+                              asset.sha256 === state.body.image?.sha256,
+                          ) && (
+                            <button
+                              className="link-button"
+                              onClick={approveAsset}
+                            >
+                              Approve this asset fingerprint
+                            </button>
+                          )}
                         <button
                           className="text-danger"
                           onClick={() => updateBody({ image: null })}
@@ -1092,6 +1189,25 @@ export default function App() {
                 </article>
               ))}
             </div>
+            {state.approvedAssets.length > 0 && (
+              <section className="card approved-assets-card">
+                <div className="small-label">APPROVED ASSET LIBRARY</div>
+                <h2>Reviewer-approved uploads</h2>
+                <p>
+                  Exact file fingerprints approved in this browser session under
+                  ASSET-001. Approval does not assess future edits to an image.
+                </p>
+                <ul>
+                  {state.approvedAssets.map((asset) => (
+                    <li key={asset.sha256}>
+                      <strong>{asset.name}</strong> ·{" "}
+                      {dateLabel(asset.approvedAt)} · SHA-256{" "}
+                      {asset.sha256.slice(0, 12)}…
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <section className="card term-builder">
               <div>
                 <div className="small-label">DEFINE A RULE</div>

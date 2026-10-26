@@ -33,8 +33,9 @@ pnpm format:check
 ## What works
 
 - A versioned, visible brand pack with approved terminology, product messaging, claim policy, tone guidance, accessibility guidance and asset policy. A user can define additional terminology pairs in the demo session.
-- Text review with exact retired-term matching and explicitly labelled heuristic checks for numeric claims and absolute language.
-- Image upload for PNG, JPEG and WebP files under 750 KB. The app checks missing alt text and computes a SHA-256 fingerprint to route an unrecognised upload to a reviewer. The bundled illustration is an approved sample asset.
+- Text review with exact retired-term matching and explicitly labelled heuristic checks for each numeric claim (including percentages) and absolute language. Multiple claims in one sentence are checked separately.
+- Local import of TXT and Markdown drafts up to 5,000 characters, in addition to typing or pasting text. The content stays in the browser session.
+- Image upload for PNG, JPEG and WebP files under 750 KB. The app checks missing alt text and computes a SHA-256 fingerprint to route an unrecognised upload to a reviewer. A demo reviewer can approve that exact fingerprint for future checks in the session. The bundled illustration is an approved sample asset.
 - Reviewer-entered claim evidence with a phrase, reference and expiry. A matching, current evidence entry suppresses the corresponding evidence-needed finding. The app does **not** verify that the entered reference is genuine.
 - Each finding includes an excerpt, location, category, severity, evidence status, explanation, source ID/version and suggested next step. A creator may apply the simple term replacement or dismiss a finding with a reason.
 - Creator submission, separate demo reviewer decision, comments, version comparison and an activity timeline. Editing an approved draft requires a new check and decision.
@@ -51,7 +52,7 @@ React interface
   └── sessionStorage for synthetic demo state
 ```
 
-`src/model.ts` contains typed records and the fictional seed pack. `src/review.ts` contains the review checks. `src/App.tsx` contains the interactive workflow and browser-session state. `src/review.test.ts` covers the sample findings, clean content, retired sources, asset review and evidence expiry. The GitHub Pages workflow in `.github/workflows/deploy.yml` builds and publishes the Vite output from `main`.
+`src/model.ts` contains typed records and the fictional seed pack. `src/review.ts` contains the review checks. `src/App.tsx` contains the interactive workflow and browser-session state. `src/review.test.ts` covers the sample findings, clean content, retired sources, asset review, evidence expiry, multiple claims and approved asset fingerprints. The GitHub Pages workflow in `.github/workflows/deploy.yml` builds and publishes the Vite output from `main`.
 
 This architecture gives judges a usable public link with only a GitHub account. It deliberately does not claim real collaboration or production security. The earlier Round 1 proposal considered Next.js and Supabase; this implementation uses React/Vite, GitHub Pages and local rules because those other services were not available to the team during this build.
 
