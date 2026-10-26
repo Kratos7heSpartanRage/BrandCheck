@@ -1726,3 +1726,579 @@ input.sr-only {
   position: absolute;
   left: -9999px;
 }
+
+/* ========================================================
+   BrandCheck AI Extensions (Google Gemini Integration)
+   ======================================================== */
+
+.ai-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d4ddd7;
+  border-radius: 999px;
+  padding: 3px 6px;
+  gap: 4px;
+  font-size: 0.82rem;
+}
+
+.ai-pill-label {
+  color: #5d756d;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mode-btn {
+  background: transparent;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: #405750;
+  font-weight: 500;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.mode-btn:hover {
+  background: #f0f4f1;
+}
+
+.mode-btn.active {
+  background: #112b27;
+  color: #f9fbf4;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(17, 43, 39, 0.2);
+}
+
+.ai-settings-btn {
+  background: transparent;
+  border: none;
+  color: #405750;
+  padding: 4px 7px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+}
+
+.ai-settings-btn:hover {
+  background: #e5ece8;
+  color: #112b27;
+}
+
+/* AI Model Configuration Drawer/Banner */
+.ai-config-banner {
+  margin: 16px 24px 0;
+  background: #ffffff;
+  border: 1px solid #c2d6cc;
+  box-shadow: 0 4px 14px rgba(17, 43, 39, 0.08);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.ai-config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.ai-config-header strong {
+  font-size: 0.98rem;
+  color: #112b27;
+  display: block;
+}
+
+.ai-config-header p {
+  font-size: 0.82rem;
+  color: #5d756d;
+  margin: 2px 0 0;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  color: #7b948b;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.close-btn:hover {
+  color: #112b27;
+}
+
+.ai-config-grid {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.ai-config-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #314a42;
+}
+
+.ai-config-grid label.flex-grow {
+  flex: 1;
+  min-width: 260px;
+}
+
+.ai-config-grid select,
+.ai-config-grid input {
+  padding: 7px 10px;
+  border: 1px solid #ccd8d2;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: #fbfdfc;
+}
+
+.ai-config-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #edf2ef;
+  font-size: 0.8rem;
+  color: #4a635b;
+}
+
+.link-external {
+  color: #215e4f;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+/* Notice Banner */
+.review-notice-banner {
+  margin: 16px 0 0;
+  background: #eef6f2;
+  border: 1px solid #bed6ca;
+  color: #1a4239;
+  border-radius: 8px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.84rem;
+}
+
+.review-notice-banner span {
+  color: #2c6e5a;
+  font-size: 1rem;
+}
+
+.review-notice-banner p {
+  margin: 0;
+  flex: 1;
+}
+
+.dismiss-notice-btn {
+  background: transparent;
+  border: none;
+  color: #607e74;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+/* Detection Badges */
+.detection-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: auto;
+}
+
+.badge-rule {
+  background: #e4ece7;
+  color: #2d4d42;
+  border: 1px solid #c9d8d0;
+}
+
+.badge-ai {
+  background: linear-gradient(135deg, #ede9fe 0%, #e0e7ff 100%);
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+}
+
+/* Pack actions */
+.pack-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Spinner */
+.spinner-inline {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ========================================================
+   Executive AI Governance Assessment Card
+   ======================================================== */
+
+.governance-assessment-card {
+  background: #ffffff;
+  border: 1px solid #c9d8d0;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 16px rgba(17, 43, 39, 0.06);
+  border-left: 5px solid #e05d44;
+}
+
+.assessment-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.risk-badge.risk-critical {
+  background: #fde8e4;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.risk-badge.risk-high {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+
+.risk-badge.risk-moderate {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fef08a;
+}
+
+.risk-badge.risk-low {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.score-meter {
+  text-align: right;
+  background: #f8faf9;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2ece7;
+}
+
+.score-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #5e7a71;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.score-val {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #112b27;
+}
+
+.score-val.score-low {
+  color: #b91c1c;
+}
+
+.score-val.score-med {
+  color: #b45309;
+}
+
+.score-val.score-high {
+  color: #15803d;
+}
+
+.assessment-summary {
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: #213d35;
+  margin: 0 0 14px 0;
+  font-weight: 500;
+}
+
+.assessment-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #f6f9f7;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #e1ebe6;
+  margin-bottom: 14px;
+}
+
+.breakdown-item {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #3b574e;
+}
+
+.breakdown-item strong {
+  color: #16362e;
+}
+
+.suggested-full-rewrite {
+  background: #eff6f2;
+  border: 1px solid #bed6ca;
+  border-radius: 9px;
+  padding: 12px 14px;
+}
+
+.rewrite-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.rewrite-header small {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2c6e5a;
+  letter-spacing: 0.04em;
+}
+
+.apply-rewrite-btn {
+  background: #256050 !important;
+  color: #ffffff !important;
+  border-color: #256050 !important;
+  font-size: 0.78rem !important;
+  padding: 5px 10px !important;
+  border-radius: 6px !important;
+}
+
+.apply-rewrite-btn:hover:not(:disabled) {
+  background: #194639 !important;
+}
+
+.rewrite-text {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.55;
+  color: #16362e;
+  font-style: normal;
+  border-left: 3px solid #336c4a;
+  padding-left: 10px;
+}
+
+/* ========================================================
+   Smooth Page Transitions & Enhanced Button Hover Effects
+   ======================================================== */
+
+.welcome-shell {
+  transition:
+    opacity 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.welcome-exiting {
+  opacity: 0;
+  transform: scale(0.96) translateY(-14px);
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+.welcome-entering {
+  animation: welcomeFadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.app-shell.app-entering {
+  animation: appFadeIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes welcomeFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes appFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Primary Button Enhanced Hover */
+.primary {
+  transition:
+    transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.22s ease,
+    border-color 0.22s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(24, 69, 42, 0.28);
+}
+
+.primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.primary span {
+  display: inline-block;
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.primary:hover:not(:disabled) span {
+  transform: translateX(4px);
+}
+
+/* Primary Large ("Try the guided demo") Enhanced Hover & Glow */
+.primary.large {
+  position: relative;
+  transition:
+    transform 0.26s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.26s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.26s ease;
+  background: linear-gradient(135deg, #d8edca 0%, #c5e4b3 100%) !important;
+  color: #0c2d22 !important;
+  box-shadow:
+    0 6px 20px rgba(8, 30, 25, 0.35),
+    0 0 0 1px rgba(216, 237, 202, 0.2) !important;
+}
+
+.primary.large:hover:not(:disabled) {
+  transform: translateY(-3px) scale(1.02);
+  background: linear-gradient(135deg, #e7f7dc 0%, #d5eed3 100%) !important;
+  box-shadow:
+    0 14px 34px rgba(8, 30, 25, 0.45),
+    0 0 24px rgba(216, 237, 202, 0.5) !important;
+}
+
+.primary.large:active:not(:disabled) {
+  transform: translateY(-1px) scale(0.99);
+}
+
+.primary.large.loading {
+  opacity: 0.85;
+  cursor: wait;
+}
+
+/* Dark Button Enhanced Hover */
+.dark-button {
+  transition:
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.dark-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: #153c29;
+  box-shadow: 0 6px 18px rgba(17, 43, 39, 0.25);
+}
+
+.dark-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Subtle & Outline Buttons Enhanced Hover */
+.subtle-button {
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.subtle-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #dfece3;
+  box-shadow: 0 2px 8px rgba(17, 43, 39, 0.08);
+}
+
+.subtle-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.outline-button {
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.outline-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: #f1f7f3;
+  border-color: #6a967f;
+  box-shadow: 0 2px 8px rgba(17, 43, 39, 0.06);
+}
+
+.outline-button:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+/* Reset Button */
+.reset-button {
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.reset-button:hover {
+  transform: translateY(-1px);
+}

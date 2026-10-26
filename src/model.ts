@@ -4,7 +4,15 @@ export type Status = "draft" | "awaiting" | "changes_requested" | "approved";
 export type EvidenceStatus =
   "Rule match" | "Review suggestion" | "Evidence needed";
 export type Category =
-  "Terminology" | "Claims" | "Tone" | "Accessibility" | "Asset usage";
+  | "Terminology"
+  | "Claims"
+  | "Tone"
+  | "Accessibility"
+  | "Asset usage"
+  | "Messaging";
+
+export type DetectionMethod = "deterministic" | "ai";
+export type ReviewMode = "hybrid" | "rules";
 
 export interface Source {
   id: string;
@@ -75,6 +83,7 @@ export interface Finding {
   sourceVersion: string;
   suggestion: string;
   replacement?: { from: string; to: string };
+  detectedBy?: DetectionMethod;
 }
 
 export interface Dismissal {
@@ -128,6 +137,25 @@ export interface DraftRecord {
   decisions: Decision[];
 }
 
+export interface BrandPackExport {
+  name: string;
+  version: string;
+  exportedAt: string;
+  sources: Source[];
+  terms: TermRule[];
+  evidence: EvidenceRecord[];
+  approvedAssets: ApprovedAsset[];
+}
+
+export interface DraftAssessment {
+  riskLevel: "Low" | "Moderate" | "High" | "Critical";
+  score: number; // 0 to 100
+  summary: string;
+  claimRiskNote: string;
+  toneRiskNote: string;
+  suggestedRewrite: string;
+}
+
 export interface AppState extends DraftRecord {
   started: boolean;
   persona: Persona;
@@ -139,6 +167,13 @@ export interface AppState extends DraftRecord {
   approvedAssets: ApprovedAsset[];
   reviewEvents: ReviewEvent[];
   reviewRuns: number;
+  // AI & Mode configuration
+  reviewMode: ReviewMode;
+  geminiApiKey: string;
+  geminiModel: string;
+  isReviewing: boolean;
+  reviewNotice: string | null;
+  assessment: DraftAssessment | null;
 }
 
 export const dateLabel = (iso: string) =>
@@ -252,4 +287,10 @@ export const makeInitialState = (): AppState => ({
   decisions: [],
   reviewEvents: [],
   reviewRuns: 0,
+  reviewMode: "hybrid",
+  geminiApiKey: "",
+  geminiModel: "gemini-3.0-pro",
+  isReviewing: false,
+  reviewNotice: null,
+  assessment: null,
 });

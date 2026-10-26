@@ -6,3 +6,6 @@ coverage/
 *.local
 .env*
 !.env.example
+
+venv/
+.venv/
