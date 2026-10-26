@@ -6,10 +6,11 @@ A functional, self-serve brand-governance demo for CodeStar 30, by team **mayank
 
 1. Open the app and choose **Try the guided demo**. No account or API key is needed.
 2. Select **Run brand review** for the prepared post. The current rules flag the retired name “Flowly,” an unsupported “2x productivity” claim, absolute wording, and missing image alt text.
-3. Open a finding’s source ID to inspect the approved rule and its version. Apply the terminology fix or edit the draft yourself. Add useful alt text and replace the performance promise with a supported description.
+3. Open a finding’s source ID to jump to its highlighted approved rule and version. Apply the terminology fix or edit the draft yourself. Add useful alt text and replace the performance promise with a supported description.
 4. Run the check again, then submit the version for approval.
-5. Switch the clearly labelled **Reviewer · demo** persona, inspect the original and submitted text, comment, and approve or request changes.
+5. Switch the clearly labelled **Reviewer · demo** persona, inspect the original and submitted text, comment, and approve or request changes. Approving a snapshot with findings marked **Needs attention** requires a reviewer explanation, even if the creator dismissed them. The decision records the finding IDs accepted as exceptions.
 6. Open **Activity & insights** for version history, decision notes and category counts. Reload the tab to confirm that this demo session persists.
+7. Choose **New draft** to review another piece of content. Switch between drafts in **Your content**; each retains its own text, status, versions, comments and decisions. Reviewer feedback appears directly above the draft editor.
 
 The role selector is a **simulation**. It is not authentication or permission enforcement for a real organisation.
 
@@ -33,12 +34,14 @@ pnpm format:check
 ## What works
 
 - A versioned, visible brand pack with approved terminology, product messaging, claim policy, tone guidance, accessibility guidance and asset policy. A user can define additional terminology pairs in the demo session.
-- Text review with exact retired-term matching and explicitly labelled heuristic checks for each numeric claim (including percentages) and absolute language. Multiple claims in one sentence are checked separately.
+- Multiple independent drafts with a shared approved brand pack. A pending submission stays intact while a creator works on another draft.
+- Title and body review with exact retired-term matching and explicitly labelled heuristic checks for each numeric claim (including percentages and decimal multipliers) and absolute language. Multiple claims in one sentence are checked separately; evidence for “2x savings” cannot clear “12x savings.” Image-only drafts also receive accessibility and asset checks.
 - Local import of TXT and Markdown drafts up to 5,000 characters, in addition to typing or pasting text. The content stays in the browser session.
 - Image upload for PNG, JPEG and WebP files under 750 KB. The app checks missing alt text and computes a SHA-256 fingerprint to route an unrecognised upload to a reviewer. A demo reviewer can approve that exact fingerprint for future checks in the session. The bundled illustration is an approved sample asset.
 - Reviewer-entered claim evidence with a phrase, reference and expiry. A matching, current evidence entry suppresses the corresponding evidence-needed finding. The app does **not** verify that the entered reference is genuine.
 - Each finding includes an excerpt, location, category, severity, evidence status, explanation, source ID/version and suggested next step. A creator may apply the simple term replacement or dismiss a finding with a reason.
 - Creator submission, separate demo reviewer decision, comments, version comparison and an activity timeline. Editing an approved draft requires a new check and decision.
+- Reviews are tied to the content, approved source data and evidence date. Editing shared guidelines or reaching a new evidence date requires a fresh check before another submission.
 - Browser-tab session persistence and simple issue counts. The checks run locally in the browser without sending draft text to a server.
 
 ## Architecture
@@ -52,7 +55,7 @@ React interface
   └── sessionStorage for synthetic demo state
 ```
 
-`src/model.ts` contains typed records and the fictional seed pack. `src/review.ts` contains the review checks. `src/App.tsx` contains the interactive workflow and browser-session state. `src/review.test.ts` covers the sample findings, clean content, retired sources, asset review, evidence expiry, multiple claims and approved asset fingerprints. The GitHub Pages workflow in `.github/workflows/deploy.yml` builds and publishes the Vite output from `main`.
+`src/model.ts` contains typed records and the fictional seed pack. `src/review.ts` contains the review checks. `src/workspace.ts` manages draft switching, edits, review freshness and decision validation. `src/App.tsx` contains the interface and browser-session state. The review and workspace tests cover source grounding, claim evidence, asset fingerprints, isolated draft histories, delayed imports and reviewer exceptions. The GitHub Pages workflow in `.github/workflows/deploy.yml` builds and publishes the Vite output from `main`.
 
 This architecture gives judges a usable public link with only a GitHub account. It deliberately does not claim real collaboration or production security. The earlier Round 1 proposal considered Next.js and Supabase; this implementation uses React/Vite, GitHub Pages and local rules because those other services were not available to the team during this build.
 

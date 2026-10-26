@@ -130,4 +130,85 @@ describe("source-backed review", () => {
       ),
     ).toEqual([]);
   });
+
+  it("checks title terminology and keeps the location available for a targeted correction", () => {
+    const body = {
+      ...structuredClone(demoBody),
+      title: "Meet Flowly",
+      text: "Designed to simplify daily work.",
+    };
+    const term = reviewDraft(body, seedSources, seedTerms).find(
+      (finding) => finding.category === "Terminology",
+    );
+    expect(term?.location).toBe("Draft title");
+    expect(term?.replacement).toEqual({ from: "Flowly", to: "NovaDesk" });
+  });
+
+  it("checks image accessibility even when there is no body text", () => {
+    const body = { ...structuredClone(demoBody), text: "" };
+    expect(
+      reviewDraft(body, seedSources, seedTerms).some(
+        (finding) => finding.category === "Accessibility",
+      ),
+    ).toBe(true);
+  });
+
+  it("preserves a decimal claim and does not accept evidence for a smaller number", () => {
+    const body = {
+      ...structuredClone(demoBody),
+      text: "Get 2.5x productivity and 12x savings.",
+    };
+    const evidenceSource = {
+      ...seedSources[2],
+      id: "EVID-001",
+      kind: "Evidence" as const,
+    };
+    const evidence = [
+      {
+        id: "e1",
+        sourceId: evidenceSource.id,
+        claim: "2x savings",
+        reference: "A test report",
+        expiresAt: "2099-01-01",
+      },
+    ];
+    const claims = reviewDraft(
+      body,
+      [...seedSources, evidenceSource],
+      seedTerms,
+      evidence,
+    ).filter((finding) => finding.category === "Claims");
+    expect(claims).toHaveLength(2);
+    expect(claims[0].excerpt).toContain("2.5x productivity");
+    expect(claims[1].excerpt).toBe("12x savings");
+  });
+
+  it("does not let evidence for one claim clear a different claim in the same sentence", () => {
+    const body = {
+      ...structuredClone(demoBody),
+      text: "Get 2x productivity and 30% savings.",
+    };
+    const evidenceSource = {
+      ...seedSources[2],
+      id: "EVID-001",
+      kind: "Evidence" as const,
+    };
+    const evidence = [
+      {
+        id: "e1",
+        sourceId: evidenceSource.id,
+        claim: "2x productivity",
+        reference: "A test report",
+        expiresAt: "2099-01-01",
+      },
+    ];
+    const claims = reviewDraft(
+      body,
+      [...seedSources, evidenceSource],
+      seedTerms,
+      evidence,
+    ).filter((finding) => finding.category === "Claims");
+    expect(claims).toHaveLength(1);
+    expect(claims[0].excerpt).toBe("30% savings");
+  });
 });

@@ -107,6 +107,7 @@ export interface Decision {
   action: "approved" | "changes_requested";
   reason: string;
   versionId: number;
+  acceptedFindingIds?: string[];
 }
 
 export interface ReviewEvent {
@@ -115,22 +116,27 @@ export interface ReviewEvent {
   sourceId: string;
 }
 
-export interface AppState {
-  started: boolean;
-  persona: Persona;
-  screen: Screen;
+export interface DraftRecord {
+  draftId: string;
   status: Status;
   body: DraftBody;
-  sources: Source[];
-  terms: TermRule[];
-  evidence: EvidenceRecord[];
-  approvedAssets: ApprovedAsset[];
   findings: Finding[];
   reviewedFingerprint: string | null;
   dismissals: Dismissal[];
   versions: Version[];
   comments: Comment[];
   decisions: Decision[];
+}
+
+export interface AppState extends DraftRecord {
+  started: boolean;
+  persona: Persona;
+  screen: Screen;
+  savedDrafts: DraftRecord[];
+  sources: Source[];
+  terms: TermRule[];
+  evidence: EvidenceRecord[];
+  approvedAssets: ApprovedAsset[];
   reviewEvents: ReviewEvent[];
   reviewRuns: number;
 }
@@ -227,6 +233,8 @@ export const demoBody: DraftBody = {
 };
 
 export const makeInitialState = (): AppState => ({
+  draftId: "draft-launch",
+  savedDrafts: [],
   started: false,
   persona: "creator",
   screen: "workspace",

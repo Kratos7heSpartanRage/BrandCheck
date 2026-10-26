@@ -1,11 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { dateLabel, demoBody, FINGERPRINT, makeInitialState } from "./model";
+import { dateLabel, demoBody, makeInitialState } from "./model";
 import type { AppState, DraftBody, Finding, Persona, Screen } from "./model";
 import { reviewDraft } from "./review";
+import {
+  attentionFindings,
+  createDraft,
+  decisionError,
+  editDraft,
+  reviewFingerprint,
+  switchDraft,
+} from "./workspace";
 
 const STORAGE_KEY = "brandcheck-demo-v1";
 const MAX_IMAGE = 750_000;
+const STATUS_LABEL = {
+  draft: "Working draft",
+  awaiting: "Awaiting approval",
+  changes_requested: "Changes requested",
+  approved: "Approved",
+};
 
 function loadState(): AppState {
   try {
@@ -19,6 +33,8 @@ function loadState(): AppState {
       )
         return {
           ...parsed,
+          draftId: parsed.draftId ?? "draft-launch",
+          savedDrafts: parsed.savedDrafts ?? [],
           evidence: parsed.evidence ?? [],
           approvedAssets: parsed.approvedAssets ?? [],
           reviewRuns: parsed.reviewRuns ?? 0,
@@ -51,10 +67,24 @@ export default function App() {
   const [claimPhrase, setClaimPhrase] = useState("");
   const [claimReference, setClaimReference] = useState("");
   const [claimExpiry, setClaimExpiry] = useState("");
+  const [showNewDraft, setShowNewDraft] = useState(false);
+  const [newDraftTitle, setNewDraftTitle] = useState("");
+  const [focusedSourceId, setFocusedSourceId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const textFileInput = useRef<HTMLInputElement>(null);
-  const currentReview = state.reviewedFingerprint === FINGERPRINT(state.body);
+  const currentReview = state.reviewedFingerprint === reviewFingerprint(state);
   const latest = state.versions.at(-1);
+  const lastDecision = state.decisions.at(-1);
+  const allDrafts = [state, ...state.savedDrafts];
+  const approvalExceptions = attentionFindings(latest);
+
+  useEffect(() => {
+    if (state.screen === "sources" && focusedSourceId) {
+      const source = document.getElementById(`source-${focusedSourceId}`);
+      source?.focus({ preventScroll: true });
+      source?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [state.screen, focusedSourceId]);
 
   useEffect(() => {
     try {
@@ -74,13 +104,32 @@ export default function App() {
 
   const patch = (changes: Partial<AppState>) =>
     setState((previous) => ({ ...previous, ...changes }));
+  const clearDraftInputs = () => {
+    setDismissInputs({});
+    setCommentInput("");
+    setDecisionReason("");
+    setShowNewDraft(false);
+    setNewDraftTitle("");
+  };
+  const selectDraft = (draftId: string) => {
+    setState((previous) => switchDraft(previous, draftId));
+    clearDraftInputs();
+  };
+  const newDraft = () => {
+    if (!newDraftTitle.trim()) return;
+    const draftId = uid();
+    setState((previous) => createDraft(previous, draftId, newDraftTitle));
+    clearDraftInputs();
+    setToast(
+      "New draft created. Other drafts and their review histories are saved in this tab.",
+    );
+  };
+  const openSource = (sourceId: string) => {
+    setFocusedSourceId(sourceId);
+    patch({ screen: "sources" });
+  };
   const updateBody = (changes: Partial<DraftBody>) =>
-    setState((previous) => ({
-      ...previous,
-      body: { ...previous.body, ...changes },
-      reviewedFingerprint: null,
-      status: previous.status === "approved" ? "draft" : previous.status,
-    }));
+    setState((previous) => editDraft(previous, state.draftId, changes));
   const updateImage = (changes: Partial<NonNullable<DraftBody["image"]>>) => {
     if (!state.body.image) return;
     updateBody({ image: { ...state.body.image, ...changes } });
@@ -114,8 +163,8 @@ export default function App() {
     setToast("Demo reset.");
   };
   const runReview = () => {
-    if (!state.body.text.trim()) {
-      setToast("Add some draft text before reviewing.");
+    if (!state.body.text.trim() && !state.body.image) {
+      setToast("Add draft text or an image before reviewing.");
       return;
     }
     const findings = reviewDraft(
@@ -128,11 +177,11 @@ export default function App() {
     setState((previous) => ({
       ...previous,
       findings,
-      reviewedFingerprint: FINGERPRINT(previous.body),
+      reviewedFingerprint: reviewFingerprint(previous),
       dismissals: [],
       status:
         previous.status === "approved" &&
-        previous.reviewedFingerprint === FINGERPRINT(previous.body)
+        previous.reviewedFingerprint === reviewFingerprint(previous)
           ? "approved"
           : "draft",
       reviewRuns: previous.reviewRuns + 1,
@@ -154,7 +203,14 @@ export default function App() {
   const applySuggestion = (finding: Finding) => {
     if (!finding.replacement) return;
     const from = finding.replacement.from;
-    updateBody({ text: state.body.text.replace(from, finding.replacement.to) });
+    if (finding.location === "Draft title")
+      updateBody({
+        title: state.body.title.replace(from, finding.replacement.to),
+      });
+    else
+      updateBody({
+        text: state.body.text.replace(from, finding.replacement.to),
+      });
     setToast("Suggestion applied. Run review again before submitting.");
   };
   const dismissFinding = (finding: Finding) => {
@@ -216,11 +272,10 @@ export default function App() {
     setToast("Comment added to the latest version.");
   };
   const decide = (action: "approved" | "changes_requested") => {
-    if (state.persona !== "reviewer" || state.status !== "awaiting" || !latest)
-      return;
     const reason = decisionReason.trim();
-    if (action === "changes_requested" && reason.length < 8) {
-      setToast("Explain the change request in at least 8 characters.");
+    const error = decisionError(state, action, reason);
+    if (error || !latest) {
+      setToast(error ?? "Submit a version before deciding.");
       return;
     }
     const decision = {
@@ -230,6 +285,10 @@ export default function App() {
       action,
       reason: reason || "Reviewed and approved by demo reviewer.",
       versionId: latest.id,
+      acceptedFindingIds:
+        action === "approved"
+          ? approvalExceptions.map((finding) => finding.id)
+          : [],
     };
     patch({ status: action, decisions: [...state.decisions, decision] });
     setDecisionReason("");
@@ -655,6 +714,105 @@ export default function App() {
                       : "Approved"}
               </div>
             </div>
+            <section className="draft-library card" aria-label="Draft library">
+              <div className="draft-picker">
+                <label htmlFor="active-draft">
+                  YOUR CONTENT · {allDrafts.length}{" "}
+                  {allDrafts.length === 1 ? "DRAFT" : "DRAFTS"}
+                </label>
+                <select
+                  id="active-draft"
+                  value={state.draftId}
+                  onChange={(event) => selectDraft(event.target.value)}
+                >
+                  {allDrafts.map((draft) => (
+                    <option key={draft.draftId} value={draft.draftId}>
+                      {draft.body.title || "Untitled draft"} ·{" "}
+                      {STATUS_LABEL[draft.status]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="draft-library-actions">
+                <small>
+                  {
+                    allDrafts.filter((draft) => draft.status === "awaiting")
+                      .length
+                  }{" "}
+                  awaiting a decision
+                </small>
+                {state.persona === "creator" && (
+                  <button
+                    className="outline-button"
+                    onClick={() => setShowNewDraft((open) => !open)}
+                    aria-expanded={showNewDraft}
+                    aria-controls="new-draft-form"
+                  >
+                    + New draft
+                  </button>
+                )}
+              </div>
+              {showNewDraft && state.persona === "creator" && (
+                <form
+                  id="new-draft-form"
+                  className="new-draft-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    newDraft();
+                  }}
+                >
+                  <label htmlFor="new-draft-title">Draft name</label>
+                  <input
+                    id="new-draft-title"
+                    value={newDraftTitle}
+                    onChange={(event) => setNewDraftTitle(event.target.value)}
+                    placeholder="e.g. October customer newsletter"
+                    maxLength={100}
+                    required
+                    autoFocus
+                  />
+                  <button className="dark-button" type="submit">
+                    Create draft
+                  </button>
+                  <button
+                    className="link-button"
+                    type="button"
+                    onClick={() => setShowNewDraft(false)}
+                  >
+                    Cancel
+                  </button>
+                  <small>
+                    Each draft keeps its own comments, revisions and decisions.
+                  </small>
+                </form>
+              )}
+            </section>
+            {lastDecision && state.status !== "awaiting" && (
+              <section
+                className={`review-feedback ${lastDecision.action}`}
+                aria-label="Latest reviewer feedback"
+              >
+                <div>
+                  <strong>
+                    {lastDecision.action === "changes_requested"
+                      ? "Changes requested"
+                      : "Reviewer approved"}{" "}
+                    · Version {lastDecision.versionId}
+                  </strong>
+                  <p>{lastDecision.reason}</p>
+                  <small>
+                    {dateLabel(lastDecision.at)} · Any new edits require a new
+                    submission.
+                  </small>
+                </div>
+                <button
+                  className="link-button"
+                  onClick={() => patch({ screen: "activity" })}
+                >
+                  View history →
+                </button>
+              </section>
+            )}
             <div className="workflow-strip">
               <div className="step done">
                 <b>1</b>
@@ -682,6 +840,20 @@ export default function App() {
                   </div>
                   <span className="card-meta">Version {latest?.id ?? 1}</span>
                 </div>
+                <label className="full-field draft-title-field">
+                  Draft title
+                  <input
+                    value={state.body.title}
+                    onChange={(event) =>
+                      updateBody({ title: event.target.value })
+                    }
+                    disabled={
+                      state.persona === "reviewer" ||
+                      state.status === "awaiting"
+                    }
+                    maxLength={100}
+                  />
+                </label>
                 <div className="field-grid">
                   <label>
                     Channel
@@ -946,11 +1118,14 @@ export default function App() {
                           <div className="finding-excerpt">
                             “{finding.excerpt}”
                           </div>
+                          <small className="finding-location">
+                            {finding.location}
+                          </small>
                           <p>{finding.explanation}</p>
                           <div className="evidence-row">
                             <span>{finding.evidenceStatus}</span>
                             <button
-                              onClick={() => patch({ screen: "sources" })}
+                              onClick={() => openSource(finding.sourceId)}
                             >
                               {sourceLabel(finding)} ↗
                             </button>
@@ -1031,15 +1206,34 @@ export default function App() {
                 )}
                 {state.persona === "reviewer" && (
                   <>
-                    <textarea
-                      value={decisionReason}
-                      onChange={(event) =>
-                        setDecisionReason(event.target.value)
-                      }
-                      placeholder="Decision note or reason for changes"
-                      rows={2}
-                      disabled={state.status !== "awaiting"}
-                    />
+                    {state.status === "awaiting" &&
+                      approvalExceptions.length > 0 && (
+                        <p className="approval-warning" role="note">
+                          {approvalExceptions.length}{" "}
+                          {approvalExceptions.length === 1
+                            ? "issue needs"
+                            : "issues need"}{" "}
+                          attention in this submitted snapshot. To approve,
+                          explain why these findings are acceptable, including
+                          any creator dismissals.
+                        </p>
+                      )}
+                    <label className="decision-note">
+                      Reviewer note{" "}
+                      {state.status === "awaiting" &&
+                      approvalExceptions.length > 0
+                        ? "(required for approval)"
+                        : ""}
+                      <textarea
+                        value={decisionReason}
+                        onChange={(event) =>
+                          setDecisionReason(event.target.value)
+                        }
+                        placeholder="Decision note or reason for changes"
+                        rows={2}
+                        disabled={state.status !== "awaiting"}
+                      />
+                    </label>
                     <div className="reviewer-buttons">
                       <button
                         className="outline-button"
@@ -1051,9 +1245,15 @@ export default function App() {
                       <button
                         className="dark-button"
                         onClick={() => decide("approved")}
-                        disabled={state.status !== "awaiting"}
+                        disabled={
+                          state.status !== "awaiting" ||
+                          (approvalExceptions.length > 0 &&
+                            decisionReason.trim().length < 8)
+                        }
                       >
-                        Approve version ✓
+                        {approvalExceptions.length > 0
+                          ? "Approve with exception ✓"
+                          : "Approve version ✓"}
                       </button>
                     </div>
                   </>
@@ -1135,11 +1335,16 @@ export default function App() {
               <div className="comment-compose">
                 <input
                   value={commentInput}
+                  aria-label="Comment on latest version"
                   onChange={(event) => setCommentInput(event.target.value)}
                   placeholder="Leave a comment on the latest version"
                   maxLength={500}
                 />
-                <button className="subtle-button" onClick={addComment}>
+                <button
+                  className="subtle-button"
+                  onClick={addComment}
+                  disabled={!latest || !commentInput.trim()}
+                >
                   Post comment
                 </button>
               </div>
@@ -1159,6 +1364,19 @@ export default function App() {
               </div>
               <span className="pack-version">NOVA DESK PACK · V1.0</span>
             </div>
+            {focusedSourceId && (
+              <div className="source-return">
+                <span>
+                  Viewing {focusedSourceId}, cited by the selected finding.
+                </span>
+                <button
+                  className="link-button"
+                  onClick={() => patch({ screen: "workspace" })}
+                >
+                  ← Back to content review
+                </button>
+              </div>
+            )}
             <div className="info-banner">
               <span>ⓘ</span>
               <p>
@@ -1169,7 +1387,12 @@ export default function App() {
             </div>
             <div className="sources-grid">
               {state.sources.map((source) => (
-                <article className="card source-card" key={source.id}>
+                <article
+                  className={`card source-card ${focusedSourceId === source.id ? "cited-source" : ""}`}
+                  key={source.id}
+                  id={`source-${source.id}`}
+                  tabIndex={-1}
+                >
                   <div className="source-top">
                     <span className="source-id">{source.id}</span>
                     <span
@@ -1272,8 +1495,13 @@ export default function App() {
               <div className="metric-card">
                 <small>DISMISSED</small>
                 <strong>
-                  {state.versions.reduce(
-                    (count, version) => count + version.dismissals.length,
+                  {allDrafts.reduce(
+                    (count, draft) =>
+                      count +
+                      draft.versions.reduce(
+                        (total, version) => total + version.dismissals.length,
+                        0,
+                      ),
                     0,
                   )}
                 </strong>
@@ -1281,7 +1509,12 @@ export default function App() {
               </div>
               <div className="metric-card">
                 <small>DECISIONS</small>
-                <strong>{state.decisions.length}</strong>
+                <strong>
+                  {allDrafts.reduce(
+                    (total, draft) => total + draft.decisions.length,
+                    0,
+                  )}
+                </strong>
                 <span>By demo reviewer</span>
               </div>
             </div>
@@ -1337,9 +1570,18 @@ export default function App() {
                   <div>
                     <div className="small-label">REVISION HISTORY</div>
                     <h2>Versions & decisions</h2>
+                    <p className="muted">
+                      {state.body.title || "Untitled draft"}
+                    </p>
                   </div>
                 </div>
                 <div className="timeline">
+                  {!state.versions.length && (
+                    <p className="muted">
+                      Submit the first version of this draft to start its review
+                      history.
+                    </p>
+                  )}
                   {[...state.versions].reverse().map((version) => (
                     <div className="timeline-item" key={version.id}>
                       <span className="timeline-dot" />
@@ -1370,6 +1612,12 @@ export default function App() {
                         </strong>
                         <small>{dateLabel(decision.at)} · Demo reviewer</small>
                         <p>{decision.reason}</p>
+                        {!!decision.acceptedFindingIds?.length && (
+                          <span>
+                            {decision.acceptedFindingIds.length} findings
+                            accepted with reviewer explanation
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
