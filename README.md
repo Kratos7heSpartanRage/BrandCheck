@@ -1,5 +1,9 @@
 # BrandCheck
 
+**Judge demo:** https://brandcheck-codestar-judge.freelynx19.chatgpt.site/ — live Gemini review is included, with no sign-in or API key entry required. The existing GitHub Pages link opens this hosted version.
+
+**Hosted app and server source:** [judge-hosted branch](https://github.com/Manas-Jain-24/brandcheck/tree/judge-hosted). Its server endpoint keeps the API key in a private runtime secret, validates requests and responses, and applies shared demo usage limits. Draft collaboration and role switching remain a browser-session demonstration.
+
 A functional, self-serve brand-governance demo for CodeStar 30, by team **mayankkumar.prof** (Manas Jain and Mayank kumar). The sample organisation, NovaDesk, is fictional.
 
 ## Judge journey
