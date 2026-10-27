@@ -26,9 +26,9 @@ pnpm dev
 Open the URL printed by Vite. Run checks with:
 
 ```sh
-pnpm test
-pnpm build
-pnpm format:check
+pnpm test          # Runs 24 Vitest unit & benchmark tests
+pnpm build         # Typecheck (tsc -b) and Vite bundle
+pnpm format:check  # Prettier verification
 ```
 
 ## What works
@@ -43,6 +43,10 @@ pnpm format:check
 - Creator submission, separate demo reviewer decision, comments, version comparison and an activity timeline. Editing an approved draft requires a new check and decision.
 - Reviews are tied to the content, approved source data and evidence date. Editing shared guidelines or reaching a new evidence date requires a fresh check before another submission.
 - Browser-tab session persistence and simple issue counts. The checks run locally in the browser without sending draft text to a server.
+- **Grounded Gemini AI Review Engine** (`gemini-3.0-pro` / `gemini-3.0-flash`): Hybrid review mode combining fast deterministic rules with semantic reasoning for nuanced hyperbole, multi-point claim verification, and full-draft compliance analysis.
+- **Executive AI Governance Assessment Suite**: Displays overall Risk Exposure levels (Low, Moderate, High, Critical), compliance score (0–100), claim & tone analysis, and full compliant draft rewrite with one-click application.
+- **Brand Pack Portability**: Export and import versioned Brand Packs in JSON format (`BrandPackExport`), ensuring zero data lock-in and team reproducibility.
+- **Quantitative 5-Draft Benchmark Suite**: 24 automated Vitest tests covering 100% source grounding resolution, active vs expired claim evidence, unapproved asset hashes, and high-risk outlandish marketing copy.
 
 ## Architecture
 
@@ -80,6 +84,36 @@ This architecture gives judges a usable public link with only a GitHub account. 
 This project uses React, React DOM, Vite, TypeScript, Vitest, Prettier, pnpm and GitHub Pages/Actions. Its code and illustration were created for this project; no Inkloom repository code or earlier product template was copied.
 
 The first product commit is dated **26 October 2026, 1:49 AM IST**. Git history preserves the development record. Individual contribution statements should describe each teammate’s actual work.
+
+## AI & External Services Disclosure
+
+- **Model Used**: Google Gemini (`gemini-3.0-pro` by default for deep reasoning; also supports `gemini-3.0-flash`).
+- **Prompt Technique**: Constrained In-Context Grounding with JSON schema enforcement (`response_mime_type: "application/json"`). The prompt injects only active, approved Brand Pack rules and forces the model to cite exact Source IDs.
+- **Hallucination Mitigation**: The client validation layer rejects any finding citing a non-existent or retired Source ID before presenting it to the user.
+- **Offline Fallback**: Evaluators without a Gemini API key can run the full hybrid demo using the built-in offline simulation without breaking.
+- **Privacy**: No tracking SDKs or analytics. Draft content is only sent to Google Gemini if an API key is configured by the user; otherwise, checks run 100% locally in-browser.
+
+---
+
+## Team Contributions
+
+In accordance with Hackathon Rules 14 and 16, work is divided as planned in the Round 1 proposal:
+
+* **Manas Jain**:
+  - Overall product flow, problem research, and presentation structure.
+  - Creator and Reviewer UI/UX, persona switching, and version diffing interface.
+  - Multi-draft independent workflow management (`workspace.ts`).
+  - Core deterministic rules prototype and GitHub Actions CI/CD deployment pipeline.
+
+* **Mayank Kumar**:
+  - Grounded AI Review Service (`src/aiReview.ts`) integrating Google Gemini with structured citation.
+  - Hybrid review pipeline (`src/review.ts`) merging deterministic and semantic findings.
+  - Executive AI Governance Assessment card and compliance scoring suite.
+  - Data model extensions (`src/model.ts`) for AI detection methods and brand pack portability.
+  - Document file reader (`.txt`, `.md`) and Brand Pack JSON import/export handlers.
+  - The 5-draft quantitative benchmark suite (`src/benchmarks/drafts.ts`, `src/benchmark.test.ts`).
+
+---
 
 ## Proposed Round 3 additions
 

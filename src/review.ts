@@ -1,11 +1,13 @@
 import type {
   ApprovedAsset,
+  DraftAssessment,
   DraftBody,
   EvidenceRecord,
   Finding,
   Source,
   TermRule,
 } from "./model";
+import { runGroundedGeminiReview } from "./aiReview";
 
 const makeFinding = (
   source: Source,
@@ -164,4 +166,109 @@ export function reviewDraft(
       );
   }
   return findings;
+}
+
+export interface HybridReviewOptions {
+  mode: "hybrid" | "rules";
+  apiKey?: string;
+  modelName?: string;
+}
+
+export interface HybridReviewOutput {
+  findings: Finding[];
+  assessment: DraftAssessment | null;
+  notice: string | null;
+  isSimulated: boolean;
+}
+
+/**
+ * Hybrid review pipeline:
+ * Combines fast deterministic rules with grounded Gemini AI analysis
+ * for nuanced tone, multi-claim verification, and executive assessment.
+ */
+export async function reviewDraftHybrid(
+  body: DraftBody,
+  sources: Source[],
+  terms: TermRule[],
+  evidence: EvidenceRecord[] = [],
+  approvedAssetsOrOptions?: ApprovedAsset[] | HybridReviewOptions,
+  maybeOptions?: HybridReviewOptions,
+): Promise<HybridReviewOutput> {
+  let approvedAssets: ApprovedAsset[] = [];
+  let options: HybridReviewOptions = { mode: "hybrid" };
+
+  if (Array.isArray(approvedAssetsOrOptions)) {
+    approvedAssets = approvedAssetsOrOptions;
+    if (maybeOptions) options = maybeOptions;
+  } else if (
+    approvedAssetsOrOptions &&
+    typeof approvedAssetsOrOptions === "object"
+  ) {
+    options = approvedAssetsOrOptions;
+  }
+
+  const deterministicFindings = reviewDraft(
+    body,
+    sources,
+    terms,
+    evidence,
+    approvedAssets,
+  );
+
+  if (options.mode === "rules") {
+    return {
+      findings: deterministicFindings,
+      assessment: null,
+      notice: null,
+      isSimulated: false,
+    };
+  }
+
+  // Run Grounded Gemini AI
+  const aiResult = await runGroundedGeminiReview(
+    body,
+    sources,
+    terms,
+    evidence,
+    options.apiKey,
+    options.modelName || "gemini-3.0-pro",
+  );
+
+  // Merge findings: prioritize deterministic findings, append non-overlapping AI findings
+  const merged: Finding[] = [...deterministicFindings];
+
+  for (const aiFinding of aiResult.findings) {
+    const isDuplicate = merged.some(
+      (existing) =>
+        existing.category === aiFinding.category &&
+        (existing.excerpt
+          .toLowerCase()
+          .includes(aiFinding.excerpt.toLowerCase()) ||
+          aiFinding.excerpt
+            .toLowerCase()
+            .includes(existing.excerpt.toLowerCase())),
+    );
+
+    if (!isDuplicate) {
+      merged.push(aiFinding);
+    }
+  }
+
+  let notice: string | null = null;
+  if (aiResult.error) {
+    notice = `AI Review notice: ${aiResult.error} (Fallback active)`;
+  } else if (aiResult.isSimulated) {
+    notice = options.apiKey?.trim()
+      ? "AI review simulation completed."
+      : "Gemini offline demo active. Enter a Gemini API Key in settings for live SOTA reasoning.";
+  } else {
+    notice = `Analyzed live using Google Gemini (${options.modelName || "gemini-3.0-pro"}).`;
+  }
+
+  return {
+    findings: merged,
+    assessment: aiResult.assessment,
+    notice,
+    isSimulated: Boolean(aiResult.isSimulated),
+  };
 }

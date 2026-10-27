@@ -1,8 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { dateLabel, demoBody, makeInitialState } from "./model";
-import type { AppState, DraftBody, Finding, Persona, Screen } from "./model";
-import { reviewDraft } from "./review";
+import type {
+  AppState,
+  BrandPackExport,
+  DraftBody,
+  Finding,
+  Persona,
+  Screen,
+} from "./model";
+import { reviewDraftHybrid } from "./review";
 import {
   attentionFindings,
   createDraft,
@@ -38,6 +45,12 @@ function loadState(): AppState {
           evidence: parsed.evidence ?? [],
           approvedAssets: parsed.approvedAssets ?? [],
           reviewRuns: parsed.reviewRuns ?? 0,
+          reviewMode: parsed.reviewMode ?? "hybrid",
+          geminiApiKey: parsed.geminiApiKey ?? "",
+          geminiModel: parsed.geminiModel ?? "gemini-3.0-pro",
+          isReviewing: false,
+          reviewNotice: parsed.reviewNotice ?? null,
+          assessment: parsed.assessment ?? null,
         };
     }
   } catch {
@@ -70,8 +83,11 @@ export default function App() {
   const [showNewDraft, setShowNewDraft] = useState(false);
   const [newDraftTitle, setNewDraftTitle] = useState("");
   const [focusedSourceId, setFocusedSourceId] = useState<string | null>(null);
+  const [showAiConfig, setShowAiConfig] = useState(false);
+  const [isStartingDemo, setIsStartingDemo] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const textFileInput = useRef<HTMLInputElement>(null);
+  const brandPackFileInput = useRef<HTMLInputElement>(null);
   const currentReview = state.reviewedFingerprint === reviewFingerprint(state);
   const latest = state.versions.at(-1);
   const lastDecision = state.decisions.at(-1);
@@ -129,27 +145,36 @@ export default function App() {
     patch({ screen: "sources" });
   };
   const updateBody = (changes: Partial<DraftBody>) =>
-    setState((previous) => editDraft(previous, state.draftId, changes));
+    setState((previous) => {
+      const updated = editDraft(previous, state.draftId, changes);
+      return { ...updated, assessment: null };
+    });
   const updateImage = (changes: Partial<NonNullable<DraftBody["image"]>>) => {
     if (!state.body.image) return;
     updateBody({ image: { ...state.body.image, ...changes } });
   };
   const startDemo = () => {
-    const initial = makeInitialState();
-    initial.started = true;
-    initial.versions = [
-      {
-        id: 1,
-        at: time(),
-        by: "creator",
-        body: structuredClone(demoBody),
-        findings: [],
-        dismissals: [],
-        note: "Original sample draft",
-      },
-    ];
-    setState(initial);
-    setToast("Demo ready. Review the draft to see its source-linked findings.");
+    setIsStartingDemo(true);
+    window.setTimeout(() => {
+      const initial = makeInitialState();
+      initial.started = true;
+      initial.versions = [
+        {
+          id: 1,
+          at: time(),
+          by: "creator",
+          body: structuredClone(demoBody),
+          findings: [],
+          dismissals: [],
+          note: "Original sample draft",
+        },
+      ];
+      setState(initial);
+      setIsStartingDemo(false);
+      setToast(
+        "Demo ready. Review the draft to see its source-linked findings.",
+      );
+    }, 360);
   };
   const resetDemo = () => {
     if (
@@ -162,43 +187,112 @@ export default function App() {
     setState(makeInitialState());
     setToast("Demo reset.");
   };
-  const runReview = () => {
+  const runReview = async () => {
     if (!state.body.text.trim() && !state.body.image) {
       setToast("Add draft text or an image before reviewing.");
       return;
     }
-    const findings = reviewDraft(
-      state.body,
-      state.sources,
-      state.terms,
-      state.evidence,
-      state.approvedAssets,
-    );
-    setState((previous) => ({
-      ...previous,
-      findings,
-      reviewedFingerprint: reviewFingerprint(previous),
-      dismissals: [],
-      status:
-        previous.status === "approved" &&
-        previous.reviewedFingerprint === reviewFingerprint(previous)
-          ? "approved"
-          : "draft",
-      reviewRuns: previous.reviewRuns + 1,
-      reviewEvents: [
-        ...previous.reviewEvents,
-        ...findings.map((finding) => ({
-          at: time(),
-          category: finding.category,
-          sourceId: finding.sourceId,
-        })),
-      ],
-    }));
-    setToast(
-      findings.length
-        ? `${findings.length} finding${findings.length === 1 ? "" : "s"} to review.`
-        : "No issues found by the current checks. Human review is still needed.",
-    );
+    patch({ isReviewing: true });
+    try {
+      const result = await reviewDraftHybrid(
+        state.body,
+        state.sources,
+        state.terms,
+        state.evidence,
+        state.approvedAssets,
+        {
+          mode: state.reviewMode,
+          apiKey: state.geminiApiKey,
+          modelName: state.geminiModel,
+        },
+      );
+      setState((previous) => ({
+        ...previous,
+        findings: result.findings,
+        assessment: result.assessment,
+        reviewedFingerprint: reviewFingerprint(previous),
+        dismissals: [],
+        status:
+          previous.status === "approved" &&
+          previous.reviewedFingerprint === reviewFingerprint(previous)
+            ? "approved"
+            : "draft",
+        reviewRuns: previous.reviewRuns + 1,
+        reviewNotice: result.notice,
+        isReviewing: false,
+        reviewEvents: [
+          ...previous.reviewEvents,
+          ...result.findings.map((finding) => ({
+            at: time(),
+            category: finding.category,
+            sourceId: finding.sourceId,
+          })),
+        ],
+      }));
+      setToast(
+        result.findings.length
+          ? `${result.findings.length} finding${result.findings.length === 1 ? "" : "s"} to review.`
+          : "No issues found by the current checks. Human review is still needed.",
+      );
+    } catch (err: unknown) {
+      patch({ isReviewing: false });
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setToast(`Review encountered an error: ${msg}`);
+    }
+  };
+
+  const exportBrandPack = () => {
+    const pack: BrandPackExport = {
+      name: "NovaDesk Brand Pack",
+      version: "1.0",
+      exportedAt: time(),
+      sources: state.sources,
+      terms: state.terms,
+      evidence: state.evidence,
+      approvedAssets: state.approvedAssets,
+    };
+    const blob = new Blob([JSON.stringify(pack, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `brandpack-novadesk-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setToast("Brand pack exported successfully.");
+  };
+
+  const handleBrandPackUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(
+          e.target?.result as string,
+        ) as BrandPackExport;
+        if (Array.isArray(parsed.sources) && Array.isArray(parsed.terms)) {
+          patch({
+            sources: parsed.sources,
+            terms: parsed.terms,
+            evidence: Array.isArray(parsed.evidence)
+              ? parsed.evidence
+              : state.evidence,
+            approvedAssets: Array.isArray(parsed.approvedAssets)
+              ? parsed.approvedAssets
+              : state.approvedAssets,
+          });
+          setToast(`Imported ${parsed.name || "Brand Pack"} successfully.`);
+        } else {
+          setToast("Invalid brand pack format. Missing sources or terms.");
+        }
+      } catch {
+        setToast("Failed to parse brand pack JSON file.");
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = "";
   };
   const applySuggestion = (finding: Finding) => {
     if (!finding.replacement) return;
@@ -552,14 +646,16 @@ export default function App() {
 
   if (!state.started)
     return (
-      <div className="welcome-shell">
+      <div
+        className={`welcome-shell ${isStartingDemo ? "welcome-exiting" : "welcome-entering"}`}
+      >
         <div className="welcome-glow" />
         <div className="welcome-top">
           <div className="brand-mark">
             B<span>✦</span>
           </div>
           <span>
-            BRANDCHECK <i>·</i> ROUND 2 DEMO
+            BRANDCHECK <i>·</i> CONTENT GOVERNANCE DESK
           </span>
         </div>
         <main className="welcome-main">
@@ -576,8 +672,20 @@ export default function App() {
             guidance. Every finding points to a source; a person makes the final
             call.
           </p>
-          <button className="primary large" onClick={startDemo}>
-            Try the guided demo <span>→</span>
+          <button
+            className={`primary large ${isStartingDemo ? "loading" : ""}`}
+            onClick={startDemo}
+            disabled={isStartingDemo}
+          >
+            {isStartingDemo ? (
+              <>
+                <span className="spinner-inline" /> Launching workspace...
+              </>
+            ) : (
+              <>
+                Try the guided demo <span>→</span>
+              </>
+            )}
           </button>
           <div className="welcome-note">
             No account required · Fictional brand · Stored in this browser tab
@@ -622,7 +730,7 @@ export default function App() {
     );
 
   return (
-    <div className="app-shell">
+    <div className="app-shell app-entering">
       <aside className="sidebar">
         <div className="sidebar-top">
           <div className="brand-lockup">
@@ -674,6 +782,32 @@ export default function App() {
                 : "Activity & insights"}
           </div>
           <div className="top-actions">
+            <div className="ai-mode-pill">
+              <span className="ai-pill-label">Engine:</span>
+              <button
+                type="button"
+                className={`mode-btn ${state.reviewMode === "hybrid" ? "active" : ""}`}
+                onClick={() => patch({ reviewMode: "hybrid" })}
+              >
+                ✦ Hybrid AI
+              </button>
+              <button
+                type="button"
+                className={`mode-btn ${state.reviewMode === "rules" ? "active" : ""}`}
+                onClick={() => patch({ reviewMode: "rules" })}
+              >
+                Rules only
+              </button>
+              <button
+                type="button"
+                className="ai-settings-btn"
+                title="Gemini AI Settings"
+                onClick={() => setShowAiConfig((prev) => !prev)}
+              >
+                ⚙
+              </button>
+            </div>
+
             <span className="local-badge">
               <span /> Local demo
             </span>
@@ -692,6 +826,73 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {showAiConfig && (
+          <div className="ai-config-banner card">
+            <div className="ai-config-header">
+              <div>
+                <strong>Google Gemini Model Configuration</strong>
+                <p>
+                  Configure in-context grounded review. Key stays strictly in
+                  your browser session.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="close-btn"
+                onClick={() => setShowAiConfig(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="ai-config-grid">
+              <label>
+                Model
+                <select
+                  value={state.geminiModel}
+                  onChange={(e) => patch({ geminiModel: e.target.value })}
+                >
+                  <option value="gemini-3.0-pro">
+                    gemini-3.0-pro (Latest SOTA · Deep Compliance & Reasoning)
+                  </option>
+                  <option value="gemini-3.0-flash">
+                    gemini-3.0-flash (Next-Gen Ultra-Fast & Grounded)
+                  </option>
+                  <option value="gemini-2.5-pro">
+                    gemini-2.5-pro (High Reasoning)
+                  </option>
+                  <option value="gemini-2.5-flash">
+                    gemini-2.5-flash (Fast & Balanced)
+                  </option>
+                </select>
+              </label>
+              <label className="flex-grow">
+                Gemini API Key (optional for live queries)
+                <input
+                  type="password"
+                  placeholder="Paste your Google Gemini API key or leave empty for offline demo"
+                  value={state.geminiApiKey}
+                  onChange={(e) => patch({ geminiApiKey: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="ai-config-footer">
+              <small>
+                {state.geminiApiKey.trim()
+                  ? "✓ Live Gemini API configured (Direct client HTTPS)."
+                  : "ⓘ No API key entered: running with offline high-quality Gemini simulation."}
+              </small>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="link-external"
+              >
+                Get Gemini API Key ↗
+              </a>
+            </div>
+          </div>
+        )}
         {state.screen === "workspace" && (
           <main className="page workspace-page">
             <div className="page-heading">
@@ -1041,10 +1242,21 @@ export default function App() {
                     className="primary"
                     onClick={runReview}
                     disabled={
-                      state.persona !== "creator" || state.status === "awaiting"
+                      state.persona !== "creator" ||
+                      state.status === "awaiting" ||
+                      state.isReviewing
                     }
                   >
-                    Run brand review <span>→</span>
+                    {state.isReviewing ? (
+                      <>
+                        <span className="spinner-inline" /> Evaluating with
+                        Gemini...
+                      </>
+                    ) : (
+                      <>
+                        Run brand review <span>→</span>
+                      </>
+                    )}
                   </button>
                   <small>
                     {currentReview
@@ -1052,6 +1264,20 @@ export default function App() {
                       : "Review required after every edit"}
                   </small>
                 </div>
+
+                {state.reviewNotice && (
+                  <div className="review-notice-banner">
+                    <span>✦</span>
+                    <p>{state.reviewNotice}</p>
+                    <button
+                      type="button"
+                      className="dismiss-notice-btn"
+                      onClick={() => patch({ reviewNotice: null })}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
               </section>
               <section className="card findings-card">
                 <div className="card-heading">
@@ -1068,6 +1294,81 @@ export default function App() {
                     {currentReview ? "Current draft" : "Check required"}
                   </span>
                 </div>
+
+                {/* AI Executive Governance Assessment Card */}
+                {currentReview && state.assessment && (
+                  <div className="governance-assessment-card">
+                    <div className="assessment-top">
+                      <div className="assessment-badge-group">
+                        <div className="small-label">
+                          AI GOVERNANCE ASSESSMENT
+                        </div>
+                        <span
+                          className={`risk-badge risk-${state.assessment.riskLevel.toLowerCase()}`}
+                        >
+                          ● {state.assessment.riskLevel} Risk Exposure
+                        </span>
+                      </div>
+                      <div className="score-meter">
+                        <div className="score-label">Compliance Score</div>
+                        <div
+                          className={`score-val ${
+                            state.assessment.score < 50
+                              ? "score-low"
+                              : state.assessment.score < 80
+                                ? "score-med"
+                                : "score-high"
+                          }`}
+                        >
+                          {state.assessment.score} / 100
+                        </div>
+                      </div>
+                    </div>
+                    <p className="assessment-summary">
+                      {state.assessment.summary}
+                    </p>
+                    <div className="assessment-breakdown">
+                      {state.assessment.claimRiskNote && (
+                        <div className="breakdown-item">
+                          <strong>📊 Claim Substantiation:</strong>{" "}
+                          {state.assessment.claimRiskNote}
+                        </div>
+                      )}
+                      {state.assessment.toneRiskNote && (
+                        <div className="breakdown-item">
+                          <strong>🎙 Voice & Tone:</strong>{" "}
+                          {state.assessment.toneRiskNote}
+                        </div>
+                      )}
+                    </div>
+                    {state.assessment.suggestedRewrite &&
+                      state.persona === "creator" &&
+                      state.status !== "awaiting" && (
+                        <div className="suggested-full-rewrite">
+                          <div className="rewrite-header">
+                            <small>RECOMMENDED COMPLIANT FULL DRAFT</small>
+                            <button
+                              type="button"
+                              className="subtle-button apply-rewrite-btn"
+                              onClick={() => {
+                                updateBody({
+                                  text: state.assessment!.suggestedRewrite,
+                                });
+                                setToast(
+                                  "Compliant rewrite applied! Click 'Run brand review' to verify zero errors.",
+                                );
+                              }}
+                            >
+                              Apply Compliant Rewrite ↗
+                            </button>
+                          </div>
+                          <blockquote className="rewrite-text">
+                            {state.assessment.suggestedRewrite}
+                          </blockquote>
+                        </div>
+                      )}
+                  </div>
+                )}
                 {!currentReview && (
                   <div className="review-placeholder">
                     <div className="placeholder-symbol">✦</div>
@@ -1114,6 +1415,15 @@ export default function App() {
                             >
                               {finding.severity}
                             </span>
+                            {finding.detectedBy && (
+                              <span
+                                className={`detection-badge ${finding.detectedBy === "ai" ? "badge-ai" : "badge-rule"}`}
+                              >
+                                {finding.detectedBy === "ai"
+                                  ? "✦ Gemini AI"
+                                  : "⚡ Rule"}
+                              </span>
+                            )}
                           </div>
                           <div className="finding-excerpt">
                             “{finding.excerpt}”
@@ -1362,7 +1672,30 @@ export default function App() {
                   fictional brand pack.
                 </p>
               </div>
-              <span className="pack-version">NOVA DESK PACK · V1.0</span>
+              <div className="pack-actions">
+                <span className="pack-version">NOVA DESK PACK · V1.0</span>
+                <button
+                  type="button"
+                  className="subtle-button"
+                  onClick={exportBrandPack}
+                >
+                  📥 Export Pack (.json)
+                </button>
+                <button
+                  type="button"
+                  className="subtle-button"
+                  onClick={() => brandPackFileInput.current?.click()}
+                >
+                  📤 Import Pack (.json)
+                </button>
+                <input
+                  ref={brandPackFileInput}
+                  type="file"
+                  accept=".json,application/json"
+                  className="sr-only"
+                  onChange={handleBrandPackUpload}
+                />
+              </div>
             </div>
             {focusedSourceId && (
               <div className="source-return">
