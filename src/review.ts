@@ -8,6 +8,7 @@ import type {
   TermRule,
 } from "./model";
 import { runGroundedGeminiReview } from "./aiReview";
+import { DEFAULT_GEMINI_MODEL } from "./model";
 
 const makeFinding = (
   source: Source,
@@ -231,7 +232,7 @@ export async function reviewDraftHybrid(
     terms,
     evidence,
     options.apiKey,
-    options.modelName || "gemini-3.0-pro",
+    options.modelName || DEFAULT_GEMINI_MODEL,
   );
 
   // Merge findings: prioritize deterministic findings, append non-overlapping AI findings
@@ -262,7 +263,7 @@ export async function reviewDraftHybrid(
       ? "AI review simulation completed."
       : "Gemini offline demo active. Enter a Gemini API Key in settings for live SOTA reasoning.";
   } else {
-    notice = `Analyzed live using Google Gemini (${options.modelName || "gemini-3.0-pro"}).`;
+    notice = `Analyzed live using Google Gemini (${options.modelName || DEFAULT_GEMINI_MODEL}).`;
   }
 
   return {

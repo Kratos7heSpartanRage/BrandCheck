@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { dateLabel, demoBody, makeInitialState } from "./model";
+import {
+  dateLabel,
+  demoBody,
+  makeInitialState,
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_MODELS,
+} from "./model";
 import type {
   AppState,
   BrandPackExport,
@@ -46,8 +52,12 @@ function loadState(): AppState {
           approvedAssets: parsed.approvedAssets ?? [],
           reviewRuns: parsed.reviewRuns ?? 0,
           reviewMode: parsed.reviewMode ?? "hybrid",
-          geminiApiKey: parsed.geminiApiKey ?? "",
-          geminiModel: parsed.geminiModel ?? "gemini-3.0-pro",
+          geminiApiKey: "",
+          geminiModel: GEMINI_MODELS.some(
+            (model) => model.id === parsed.geminiModel,
+          )
+            ? parsed.geminiModel
+            : DEFAULT_GEMINI_MODEL,
           isReviewing: false,
           reviewNotice: parsed.reviewNotice ?? null,
           assessment: parsed.assessment ?? null,
@@ -104,7 +114,10 @@ export default function App() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      sessionStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ ...state, geminiApiKey: "" }),
+      );
     } catch {
       setToast(
         "Browser session storage is unavailable. Your changes may not survive a reload.",
@@ -723,8 +736,8 @@ export default function App() {
           </div>
         </div>
         <footer className="welcome-footer">
-          Built for careful teams. Demonstration only; no external service or
-          server receives content.
+          Built for careful teams. Local checks by default; adding a key enables
+          text review through Google Gemini.
         </footer>
       </div>
     );
@@ -852,18 +865,11 @@ export default function App() {
                   value={state.geminiModel}
                   onChange={(e) => patch({ geminiModel: e.target.value })}
                 >
-                  <option value="gemini-3.0-pro">
-                    gemini-3.0-pro (Latest SOTA · Deep Compliance & Reasoning)
-                  </option>
-                  <option value="gemini-3.0-flash">
-                    gemini-3.0-flash (Next-Gen Ultra-Fast & Grounded)
-                  </option>
-                  <option value="gemini-2.5-pro">
-                    gemini-2.5-pro (High Reasoning)
-                  </option>
-                  <option value="gemini-2.5-flash">
-                    gemini-2.5-flash (Fast & Balanced)
-                  </option>
+                  {GEMINI_MODELS.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="flex-grow">
@@ -879,7 +885,7 @@ export default function App() {
             <div className="ai-config-footer">
               <small>
                 {state.geminiApiKey.trim()
-                  ? "✓ Live Gemini API configured (Direct client HTTPS)."
+                  ? "Key entered for Google Gemini requests. Kept in memory; cleared on reload."
                   : "ⓘ No API key entered: running with offline high-quality Gemini simulation."}
               </small>
               <a
@@ -1958,10 +1964,12 @@ export default function App() {
               </section>
             </div>
             <div className="privacy-note">
-              <strong>Demo privacy:</strong> Content and image previews stay in
-              this browser tab’s session storage. No external service, analytics
-              service or server is called. Closing the tab clears this demo
-              state. This is not a secure shared workspace.
+              <strong>Demo privacy:</strong> Drafts and image previews are
+              stored in this tab’s session storage. Hybrid review with an API
+              key sends draft text, image metadata and the brand pack to Google
+              Gemini. Local rules and the offline demo run in the browser. API
+              keys stay in memory and are cleared on reload. No analytics
+              service is used.
             </div>
           </main>
         )}

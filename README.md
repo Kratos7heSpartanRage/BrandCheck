@@ -26,7 +26,7 @@ pnpm dev
 Open the URL printed by Vite. Run checks with:
 
 ```sh
-pnpm test          # Runs 24 Vitest unit & benchmark tests
+pnpm test          # Runs Vitest unit & benchmark tests
 pnpm build         # Typecheck (tsc -b) and Vite bundle
 pnpm format:check  # Prettier verification
 ```
@@ -42,8 +42,8 @@ pnpm format:check  # Prettier verification
 - Each finding includes an excerpt, location, category, severity, evidence status, explanation, source ID/version and suggested next step. A creator may apply the simple term replacement or dismiss a finding with a reason.
 - Creator submission, separate demo reviewer decision, comments, version comparison and an activity timeline. Editing an approved draft requires a new check and decision.
 - Reviews are tied to the content, approved source data and evidence date. Editing shared guidelines or reaching a new evidence date requires a fresh check before another submission.
-- Browser-tab session persistence and simple issue counts. The checks run locally in the browser without sending draft text to a server.
-- **Grounded Gemini AI Review Engine** (`gemini-3.0-pro` / `gemini-3.0-flash`): Hybrid review mode combining fast deterministic rules with semantic reasoning for nuanced hyperbole, multi-point claim verification, and full-draft compliance analysis.
+- Browser-tab session persistence and simple issue counts. Local rules and the offline demo run in the browser; hybrid review with a key sends the draft and brand context to Google Gemini.
+- **Grounded Gemini AI Review Engine** (`gemini-3.1-flash-lite` by default): Hybrid review combines deterministic rules with semantic review. A live sample review on 27 October 2026 returned six merged findings with active source IDs in approximately 17 seconds. This smoke test does not establish accuracy across real brand material.
 - **Executive AI Governance Assessment Suite**: Displays overall Risk Exposure levels (Low, Moderate, High, Critical), compliance score (0–100), claim & tone analysis, and full compliant draft rewrite with one-click application.
 - **Brand Pack Portability**: Export and import versioned Brand Packs in JSON format (`BrandPackExport`), ensuring zero data lock-in and team reproducibility.
 - **Quantitative 5-Draft Benchmark Suite**: 24 automated Vitest tests covering 100% source grounding resolution, active vs expired claim evidence, unapproved asset hashes, and high-risk outlandish marketing copy.
@@ -66,7 +66,7 @@ This architecture gives judges a usable public link with only a GitHub account. 
 ## Privacy, security and accessibility
 
 - Sample content is fictional. Do not put confidential brand material in this public demo.
-- Draft text, image previews, source edits, comments and decisions are stored in this tab’s `sessionStorage`. The app has no backend, tracking service, analytics SDK or external network call. Font files are not loaded from an external service.
+- Draft text, image previews, source edits, comments and decisions are stored in this tab’s `sessionStorage`. Hybrid review with a key sends text, image metadata and brand context to Google Gemini. API keys are kept in memory, sent in an HTTPS header, and cleared on reload. The app has no backend or analytics SDK. Font files are not loaded from an external service.
 - Uploads are limited to PNG/JPEG/WebP under 750 KB. SHA-256 is used for file identity only; it does not establish visual correctness or asset ownership.
 - Findings distinguish rule matches, review suggestions and evidence-needed claims. The app does not call an unverified claim false. Human decisions remain visible in the demo timeline.
 - Fields have labels, keyboard-focus styles and image-alt guidance. Decorative images can be marked as such. Automated accessibility audit and assistive-technology testing remain future work.
@@ -87,8 +87,8 @@ The first product commit is dated **26 October 2026, 1:49 AM IST**. Git history 
 
 ## AI & External Services Disclosure
 
-- **Model Used**: Google Gemini (`gemini-3.0-pro` by default for deep reasoning; also supports `gemini-3.0-flash`).
-- **Prompt Technique**: Constrained In-Context Grounding with JSON schema enforcement (`response_mime_type: "application/json"`). The prompt injects only active, approved Brand Pack rules and forces the model to cite exact Source IDs.
+- **Model Used**: Google Gemini (`gemini-3.1-flash-lite` by default, verified with a live sample request). The configured models are listed in `src/model.ts`. Availability can vary by account and service capacity.
+- **Prompt Technique**: The prompt supplies brand context and requests exact source IDs and JSON output (`responseMimeType: "application/json"`). The client checks source IDs; complete validation of every response field remains planned.
 - **Hallucination Mitigation**: The client validation layer rejects any finding citing a non-existent or retired Source ID before presenting it to the user.
 - **Offline Fallback**: Evaluators without a Gemini API key can run the full hybrid demo using the built-in offline simulation without breaking.
 - **Privacy**: No tracking SDKs or analytics. Draft content is only sent to Google Gemini if an API key is configured by the user; otherwise, checks run 100% locally in-browser.

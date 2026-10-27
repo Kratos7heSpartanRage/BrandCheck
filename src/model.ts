@@ -14,6 +14,16 @@ export type Category =
 export type DetectionMethod = "deterministic" | "ai";
 export type ReviewMode = "hybrid" | "rules";
 
+export const GEMINI_MODELS = [
+  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite · Tested live" },
+  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash · Fast review" },
+  { id: "gemini-flash-latest", label: "Gemini Flash · Latest alias" },
+  { id: "gemini-pro-latest", label: "Gemini Pro · Latest alias" },
+  { id: "gemini-3-flash-preview", label: "Gemini 3 Flash · Preview" },
+  { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro · Preview" },
+] as const;
+export const DEFAULT_GEMINI_MODEL = GEMINI_MODELS[0].id;
+
 export interface Source {
   id: string;
   title: string;
@@ -289,7 +299,7 @@ export const makeInitialState = (): AppState => ({
   reviewRuns: 0,
   reviewMode: "hybrid",
   geminiApiKey: "",
-  geminiModel: "gemini-3.0-pro",
+  geminiModel: DEFAULT_GEMINI_MODEL,
   isReviewing: false,
   reviewNotice: null,
   assessment: null,

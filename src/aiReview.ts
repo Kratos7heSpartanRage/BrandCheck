@@ -8,6 +8,7 @@ import type {
   Source,
   TermRule,
 } from "./model";
+import { DEFAULT_GEMINI_MODEL } from "./model";
 
 export interface GeminiFindingPayload {
   category: Category;
@@ -42,7 +43,7 @@ export interface AiReviewResult {
 
 /**
  * Builds the strict, grounded system instruction and contextual prompt
- * for Google Gemini (gemini-3.0-pro).
+ * for the configured Google Gemini model.
  */
 function buildGeminiPrompt(
   body: DraftBody,
@@ -431,7 +432,7 @@ function runRichSimulatedAiReview(
 }
 
 /**
- * Runs a grounded AI review using the Google Gemini API (gemini-3.0-pro).
+ * Runs a grounded AI review using the configured Google Gemini model.
  * If no key is provided, invokes the rich multi-point semantic engine above.
  */
 export async function runGroundedGeminiReview(
@@ -440,7 +441,7 @@ export async function runGroundedGeminiReview(
   terms: TermRule[],
   evidence: EvidenceRecord[] = [],
   apiKey?: string,
-  modelName: string = "gemini-3.0-pro",
+  modelName: string = DEFAULT_GEMINI_MODEL,
 ): Promise<AiReviewResult> {
   const activeSources = sources.filter((s) => s.status === "Approved");
   const activeSourcesMap = new Map(activeSources.map((s) => [s.id, s]));
@@ -465,13 +466,15 @@ export async function runGroundedGeminiReview(
   try {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       modelName,
-    )}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+    )}:generateContent`;
 
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-goog-api-key": cleanKey,
       },
+      signal: AbortSignal.timeout(45_000),
       body: JSON.stringify({
         contents: [
           {
@@ -480,7 +483,7 @@ export async function runGroundedGeminiReview(
           },
         ],
         generationConfig: {
-          response_mime_type: "application/json",
+          responseMimeType: "application/json",
           temperature: 0.1,
         },
       }),
@@ -534,8 +537,10 @@ export async function runGroundedGeminiReview(
           payload.assessment = parsed.assessment;
         }
       }
-    } catch (parseError) {
-      console.warn("Failed to parse Gemini JSON:", rawContent, parseError);
+    } catch {
+      console.warn(
+        "Gemini returned invalid review JSON; using the offline fallback.",
+      );
       const fallback = runRichSimulatedAiReview(body, activeSourcesMap);
       return {
         findings: fallback.findings,
