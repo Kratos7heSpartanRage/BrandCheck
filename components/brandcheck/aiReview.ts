@@ -442,6 +442,7 @@ export async function runGroundedGeminiReview(
   evidence: EvidenceRecord[] = [],
   apiKey?: string,
   modelName: string = DEFAULT_GEMINI_MODEL,
+  timeoutMs = 45_000,
 ): Promise<AiReviewResult> {
   const activeSources = sources.filter((s) => s.status === "Approved");
   const activeSourcesMap = new Map(activeSources.map((s) => [s.id, s]));
@@ -484,7 +485,7 @@ export async function runGroundedGeminiReview(
         "Content-Type": "application/json",
         "x-goog-api-key": cleanKey,
       },
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(timeoutMs),
       body: JSON.stringify({
         contents: [
           {

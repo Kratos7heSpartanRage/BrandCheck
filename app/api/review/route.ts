@@ -87,7 +87,12 @@ export async function POST(request: Request) {
     const sourceIds = new Set(approved.map(source => source.id));
     const date = new Date().toISOString().slice(0, 10);
     const activeEvidence = evidence.filter(record => record.expiresAt >= date && approved.some(source => source.id === record.sourceId && source.kind === "Evidence"));
-    const result = await runGroundedGeminiReview(body, approved, terms.filter(term => sourceIds.has(term.sourceId)), activeEvidence, env.GEMINI_API_KEY, env.GEMINI_MODEL || "gemini-3.1-flash-lite");
+    const run = () => runGroundedGeminiReview(body, approved, terms.filter(term => sourceIds.has(term.sourceId)), activeEvidence, env.GEMINI_API_KEY, env.GEMINI_MODEL || "gemini-3.1-flash-lite", 22_000);
+    let result = await run();
+    if (result.error && /demand|temporar|network|timeout|overload|unavailable|rate|quota/i.test(result.error)) {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      result = await run();
+    }
     if (result.isSimulated || result.error) return json({ error: "Google Gemini is temporarily unavailable. Local brand checks are still available; please retry the live review." }, 503);
     const output = z.object({ findings: z.array(findingSchema).max(60), assessment: assessmentSchema, isSimulated: z.literal(false) }).safeParse(result);
     if (!output.success) return json({ error: "The AI response could not be validated. Please retry or use local rules." }, 502);
