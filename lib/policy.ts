@@ -40,7 +40,7 @@ export function findingSignature(findings: Finding[]) {
 export async function fetchGitHubPolicy(url: string): Promise<Policy> {
   const location = new URL(url);
   if (location.protocol !== "https:" || location.hostname !== "raw.githubusercontent.com" || location.port || location.username || location.password || location.search || location.hash || location.pathname.split("/").filter(Boolean).length < 4) throw new Error("Use an HTTPS raw.githubusercontent.com policy JSON URL.");
-  const response = await fetch(location, { redirect: "error", signal: AbortSignal.timeout(8000), headers: { Accept: "application/json" } });
+  const response = await fetch(location.href, { redirect: "manual", signal: AbortSignal.timeout(8000), headers: { Accept: "application/json" } });
   if (!response.ok) throw new Error("GitHub could not return this public policy file.");
   const reader = response.body?.getReader(); if (!reader) throw new Error("The policy file is empty.");
   let size = 0; const chunks: Uint8Array[] = [];

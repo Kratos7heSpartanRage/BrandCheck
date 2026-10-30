@@ -239,3 +239,14 @@ test("AI findings require real excerpts and active citations; invalid replacemen
     assert.equal(result.findings.length, 1); assert.equal(result.findings[0].excerpt, "Flowly"); assert.equal(result.findings[0].replacement, undefined);
   } finally { globalThis.fetch = originalFetch; }
 });
+test("GitHub connector uses edge-compatible manual redirects and never follows a redirect", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    let calls = 0;
+    globalThis.fetch = async (_url, options) => { calls++; assert.equal(options.redirect, "manual"); return new Response(null, { status: 302, headers: { Location: "http://127.0.0.1/private" } }); };
+    await assert.rejects(fetchGitHubPolicy("https://raw.githubusercontent.com/owner/repo/main/policy.json"));
+    assert.equal(calls, 1);
+    globalThis.fetch = async (_url, options) => { assert.equal(options.redirect, "manual"); return Response.json(defaultPolicy); };
+    assert.equal((await fetchGitHubPolicy("https://raw.githubusercontent.com/owner/repo/main/policy.json")).name, defaultPolicy.name);
+  } finally { globalThis.fetch = originalFetch; }
+});
