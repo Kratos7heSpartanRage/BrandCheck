@@ -1,10 +1,31 @@
-# BrandCheck
+# BrandCheck — Pre-Publication Brand Governance Platform
 
-**Judge demo:** https://brandcheck-codestar-judge.freelynx19.chatgpt.site/ — live Gemini review is included, with no sign-in or API key entry required. The existing GitHub Pages link opens this hosted version.
+> **CodeStar 30 — Round 3 Finals Submission** (31 October 2026 – 3 November 2026 IST)  
+> **Team:** `mayankkumar.prof` (Manas Jain & Mayank Kumar) | **Problem Statement:** Inkloom AI
 
-**Hosted app and server source:** [judge-hosted branch](https://github.com/Manas-Jain-24/brandcheck/tree/judge-hosted). Its server endpoint keeps the API key in a private runtime secret, validates requests and responses, and applies shared demo usage limits. Draft collaboration and role switching remain a browser-session demonstration.
+---
 
-A functional, self-serve brand-governance demo for CodeStar 30, by team **mayankkumar.prof** (Manas Jain and Mayank kumar). The sample organisation, NovaDesk, is fictional.
+### 🌐 Quick Access Links
+
+- 🚀 **Live Hosted Fullstack Product:** [brandcheck-codestar-judge.freelynx19.chatgpt.site/workspace](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/workspace)
+- 📂 **Fullstack Source Code (Judge Branch):** [github.com/Manas-Jain-24/brandcheck/tree/judge-hosted](https://github.com/Manas-Jain-24/brandcheck/tree/judge-hosted)
+- 📄 **Official 4-Page Finals PDF:** [docs/BrandCheck_Round_3_Finals.pdf](docs/BrandCheck_Round_3_Finals.pdf)
+- 🧪 **Interactive Client Demo (GitHub Pages):** [manas-jain-24.github.io/brandcheck](https://manas-jain-24.github.io/brandcheck/)
+
+---
+
+### 🌟 Round 3 Finals: Implemented Upgrades & System Limits
+
+All promised Round 2 improvements and 5 competitive upgrades are fully built, tested, and live on the **[`judge-hosted` branch](https://github.com/Manas-Jain-24/brandcheck/tree/judge-hosted)**:
+
+1. **Pre-Flight Compliance Status Bar:** Real-time visual compliance badges (Terminology, Claims and Evidence, Visual Asset Fingerprint) with a dynamic 0–100% Brand Score.
+2. **1-Click Batch Terminology Fix (`applyAllTerminologyCorrections`):** Instantly resolves all retired terms across title, body, and multi-part document segments while preserving character offset integrity.
+3. **Reviewer Quick-Decision Templates:** Single-click decision notes for authorized reviewers (e.g., *"All terminology and promotional claims verified against active guidelines"*).
+4. **Official Brand Clearance Certificate Modal:** Formally generates exportable sign-off certificates for approved content revisions, complete with policy version, audit history, browser print formatting, and 1-click Markdown export.
+5. **Smart WCAG 2.2 Contrast Optimizer:** Live badges for WCAG AA Normal Text (4.5:1), WCAG AA Large Text (3.0:1), and WCAG AAA Enhanced (7.0:1), plus an automatic color correction algorithm that adjusts failing hex codes to meet WCAG standards.
+6. **Expanded System Limits:** Support for 15 MB files (PDF, DOCX, PNG, JPEG, WebP), up to 40 PDF pages, 400 DOCX paragraphs, 80,000 characters extracted, 10,000 character draft bodies, 160 KB network stream buffers, and 180 daily AI quota.
+
+---
 
 ## Judge journey
 
