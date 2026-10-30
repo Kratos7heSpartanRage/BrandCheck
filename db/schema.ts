@@ -24,6 +24,8 @@ export const sharedDrafts = sqliteTable("shared_drafts", {
   policyVersion: integer("policy_version").notNull().default(0),
   document: text("document"),
   reviewMeta: text("review_meta"),
+  image: text("image"),
+  reviewerEmail: text("reviewer_email"),
 });
 export const workspacePolicies = sqliteTable("workspace_policies", {
   workspaceId: text("workspace_id").primaryKey().references(() => workspaces.id),

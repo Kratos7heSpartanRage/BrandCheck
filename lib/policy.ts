@@ -11,12 +11,15 @@ export const policySchema = z.object({
   sources: z.array(sourceSchema).min(1).max(40),
   terms: z.array(z.object({ id: short, retired: short, preferred: short, sourceId: short })).max(40),
   evidence: z.array(z.object({ id: short, claim: z.string().min(1).max(200), reference: z.string().max(500), expiresAt: date, sourceId: short })).max(40),
+  approvedAssets: z.array(z.object({ name: z.string().trim().min(1).max(200), sha256: z.string().regex(/^[a-f0-9]{64}$/), sourceId: short, approvedAt: date })).max(40).optional(),
+  palette: z.array(z.string().regex(/^#[a-fA-F0-9]{6}$/)).max(12).optional(),
 }).superRefine((value, ctx) => {
   const ids = new Set(value.sources.map(s => s.id));
   if (ids.size !== value.sources.length) ctx.addIssue({ code: "custom", message: "Source IDs must be unique." });
   if (new Set(value.terms.map(t => t.id)).size !== value.terms.length) ctx.addIssue({ code: "custom", message: "Term IDs must be unique." });
   for (const term of value.terms) if (!value.sources.some(s => s.id === term.sourceId && s.status === "Approved")) ctx.addIssue({ code: "custom", message: "Term rules must reference approved sources." });
   for (const record of value.evidence) if (!value.sources.some(s => s.id === record.sourceId && s.kind === "Evidence" && s.status === "Approved")) ctx.addIssue({ code: "custom", message: "Evidence must reference an approved Evidence source." });
+  for (const asset of value.approvedAssets ?? []) if (!value.sources.some(s => s.id === asset.sourceId && s.kind === "Asset policy" && s.status === "Approved")) ctx.addIssue({ code: "custom", message: "Assets must reference an approved asset source." });
 });
 export type Policy = z.infer<typeof policySchema>;
 export const defaultPolicy: Policy = { name: "NovaDesk demonstration pack", sources: seedSources, terms: seedTerms, evidence: [] };
@@ -25,6 +28,8 @@ export function starterPolicy(name: string): Policy {
     { id: "TERM-001", title: "Approved terminology", body: "Use the approved names and terminology defined by this workspace's brand owner.", version: "1", updated: new Date().toISOString().slice(0,10), status: "Approved", kind: "Terminology" },
     { id: "CLAIM-001", title: "Claim substantiation", body: "Measurable performance and outcome claims require current approved evidence. An unsupported claim requires human assessment; it is not automatically false.", version: "1", updated: new Date().toISOString().slice(0,10), status: "Approved", kind: "Claim policy" },
     { id: "TONE-001", title: "Voice and tone", body: "Be clear, calm and specific. Avoid absolute promises unless an authorised reviewer can substantiate them.", version: "1", updated: new Date().toISOString().slice(0,10), status: "Approved", kind: "Messaging" },
+    { id: "ACCESS-001", title: "Image descriptions", body: "Meaningful images need useful alternative text. Mark purely decorative images as decorative.", version: "1", updated: new Date().toISOString().slice(0,10), status: "Approved", kind: "Accessibility" },
+    { id: "ASSET-001", title: "Visual asset approval", body: "Check brand graphics against approved asset fingerprints. Unknown images require a human decision; this is not a visual-quality verdict.", version: "1", updated: new Date().toISOString().slice(0,10), status: "Approved", kind: "Asset policy" },
   ], terms: [], evidence: [] };
 }
 export function checkPolicy(policy: Policy, title: string, body: string): Finding[] {
@@ -39,7 +44,7 @@ export function policyDiff(before: Policy, after: Policy) {
     const canonical = (item: T) => JSON.stringify(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)));
     return { added: b.filter(x => !a.some(y => y.id === x.id)).map(x => x.id), removed: a.filter(x => !b.some(y => y.id === x.id)).map(x => x.id), changed: b.filter(x => a.some(y => y.id === x.id && canonical(y) !== canonical(x))).map(x => x.id) };
   }
-  return { sources: diff(before.sources, after.sources), terms: diff(before.terms, after.terms), evidence: diff(before.evidence, after.evidence) };
+  return { sources: diff(before.sources, after.sources), terms: diff(before.terms, after.terms), evidence: diff(before.evidence, after.evidence), approvedAssets: diff((before.approvedAssets ?? []).map(a => ({...a,id:a.sha256})), (after.approvedAssets ?? []).map(a => ({...a,id:a.sha256}))), palette: { before: before.palette ?? [], after: after.palette ?? [] } };
 }
 export function findingSignature(findings: Finding[]) {
   return JSON.stringify(findings.map(f => [f.id, f.excerpt, f.sourceId, f.sourceVersion, f.severity]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));

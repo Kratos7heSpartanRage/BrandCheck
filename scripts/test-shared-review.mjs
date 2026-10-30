@@ -10,15 +10,17 @@ import ts from "typescript";
 
 const directory = resolve("work/shared-tests");
 await mkdir(directory, { recursive: true });
-for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["lib/content.ts", "content"], ["lib/policy.ts", "policy"], ["lib/documents.ts", "documents"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
+for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["lib/content.ts", "content"], ["lib/grounded-assessment.ts", "grounded-assessment"], ["lib/policy.ts", "policy"], ["lib/documents.ts", "documents"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
   let compiled = ts.transpileModule(await readFile(source, "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\/)(review|model|aiReview|policy|content)"/g, '"./$1.mjs"');
+  compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\/)(review|model|aiReview|policy|content|grounded-assessment)"/g, '"./$1.mjs"');
   await writeFile(resolve(directory, `${name}.mjs`), compiled);
 }
 const { mutateWorkspace: mutate, readWorkspace: read, listWorkspaces: list } = await import(pathToFileURL(resolve(directory, "shared-review.mjs")).href);
 const { defaultPolicy, checkPolicy, fetchGitHubPolicy, policyDiff, policySchema } = await import(pathToFileURL(resolve(directory, "policy.mjs")).href);
 const { runGroundedGeminiReview } = await import(pathToFileURL(resolve(directory, "aiReview.mjs")).href);
 const { contrastRatio, extractDocument } = await import(pathToFileURL(resolve(directory, "documents.mjs")).href);
+const { groundAIFinding } = await import(pathToFileURL(resolve(directory, "grounded-assessment.mjs")).href);
+const { checkContent } = await import(pathToFileURL(resolve(directory, "content.mjs")).href);
 const owner = { userId: "owner", email: "owner@example.com" };
 const creator = { userId: "creator", email: "creator@example.com" };
 const reviewer = { userId: "reviewer", email: "reviewer@example.com" };
@@ -348,4 +350,61 @@ test("membership revoked during AI analysis cannot save the result", async () =>
   } };
   await assert.rejects(mutate(db, creator, { action: "reviewAI", workspaceId, draftId, version: 1, consent: true }, services), denied(404));
   assert.equal((await read(db, owner, workspaceId)).drafts[0].review_meta, null);
+});
+test("saved AI assessment cannot repeat unsupported model conclusions", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  await mutate(db, creator, { action: "reviewAI", workspaceId, draftId, version: 1, consent: true }, { aiReview: async () => ({ findings: [], assessment: { riskLevel: "Critical", score: 0, summary: "Invented regulatory breach", claimRiskNote: "", toneRiskNote: "", suggestedRewrite: "Unapproved text" }, isSimulated: false, model: "test" }) });
+  const saved = JSON.parse((await read(db, reviewer, workspaceId)).drafts[0].review_meta).assessment;
+  assert.equal(saved.riskLevel, "Low");
+  assert.ok(!JSON.stringify(saved).includes("regulatory breach"));
+  const wrongSource = { id: "ai:1", category: "Claims", sourceId: "TERM-001", sourceVersion: "1.0", explanation: "Regulatory breach", suggestion: "Replace all", excerpt: "Our draft" };
+  assert.equal(groundAIFinding(wrongSource, defaultPolicy.sources), null);
+});
+test("saved image review checks alt text, approval fingerprint and graphic palette", async () => {
+  const { db, workspaceId } = await fixture();
+  const image = { name: "graphic.png", mime: "image/png", bytes: 100, sha256: "a".repeat(64), alt: "", decorative: false, visualType: "brand-graphic", dominantColor: "#ff0000", previewDataUrl: null };
+  const { draftId } = await mutate(db, creator, { action: "createDraft", workspaceId, title: "Visual post", body: "", image });
+  assert.equal(JSON.parse((await read(db, reviewer, workspaceId)).drafts.find(d => d.id === draftId).image).sha256, image.sha256);
+  await mutate(db, creator, { action: "recheckDraft", workspaceId, draftId, version: 1 });
+  let draft = (await read(db, reviewer, workspaceId)).drafts.find(d => d.id === draftId);
+  assert.deepEqual(JSON.parse(draft.findings).map(f => f.id).sort(), ["access:alt","asset:unapproved"]);
+  const pack = structuredClone(defaultPolicy); pack.approvedAssets = [{ name: image.name, sha256: image.sha256, sourceId: "ASSET-001", approvedAt: "2026-10-30" }]; pack.palette = ["#174e39"];
+  const proposal = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: pack });
+  await mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: proposal.proposalId, accept: true, note: "Approved exact asset" });
+  draft = (await read(db, reviewer, workspaceId)).drafts.find(d => d.id === draftId);
+  assert.deepEqual(JSON.parse(draft.findings).map(f => f.id), ["access:alt"]);
+  assert.equal(JSON.parse(draft.image).sha256, image.sha256);
+  await mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: draft.version, title: draft.title, body: "", image: { ...image, alt: "Green product launch graphic" } });
+  draft = (await read(db, reviewer, workspaceId)).drafts.find(d => d.id === draftId);
+  await mutate(db, creator, { action: "recheckDraft", workspaceId, draftId, version: draft.version });
+  assert.equal(JSON.parse((await read(db, reviewer, workspaceId)).drafts.find(d => d.id === draftId).findings).length, 0);
+});
+test("assigned reviewer receives the submitted revision; other reviewer is denied", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  const other = { userId: "other", email: "other@example.com" };
+  await mutate(db, owner, { action: "invite", workspaceId, email: other.email, role: "reviewer" });
+  await mutate(db, creator, { action: "assignReviewer", workspaceId, draftId, version: 1, email: reviewer.email });
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 2 });
+  assert.equal((await read(db, reviewer, workspaceId)).drafts[0].reviewer_email, reviewer.email);
+  await assert.rejects(mutate(db, other, { action: "decide", workspaceId, draftId, version: 3, decision: "approved", note: "Wrong reviewer" }), denied(403));
+  await mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 3, decision: "approved", note: "Checked this exact revision" });
+  assert.equal((await read(db, creator, workspaceId)).drafts[0].state, "approved");
+});
+test("palette suggestions apply to unknown graphics but not photographs or approved assets", () => {
+  const pack = structuredClone(defaultPolicy); pack.palette = ["#174e39"];
+  const image = { name: "poster.png", mime: "image/png", bytes: 100, sha256: "b".repeat(64), alt: "Launch poster", decorative: false, visualType: "brand-graphic", dominantColor: "#ff0000", previewDataUrl: null };
+  assert.ok(checkContent(pack, "Poster", "", null, image).some(f => f.id === "asset:palette"));
+  assert.ok(!checkContent(pack, "Photo", "", null, { ...image, visualType: "photo" }).some(f => f.id === "asset:palette"));
+  pack.approvedAssets = [{ name: image.name, sha256: image.sha256, sourceId: "ASSET-001", approvedAt: "2026-10-30" }];
+  assert.ok(!checkContent(pack, "Approved poster", "", null, image).some(f => f.id === "asset:palette"));
+});
+test("removing an assigned reviewer clears assignment and invalidates a stale decision", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  await mutate(db, creator, { action: "assignReviewer", workspaceId, draftId, version: 1, email: reviewer.email });
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 2 });
+  await mutate(db, owner, { action: "removeMember", workspaceId, email: reviewer.email, note: "Reviewer left" });
+  const draft = (await read(db, creator, workspaceId)).drafts[0];
+  assert.equal(draft.reviewer_email, null);
+  assert.equal(draft.version, 4);
+  await assert.rejects(mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 3, decision: "approved", note: "Stale" }), denied(404));
 });

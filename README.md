@@ -9,12 +9,12 @@ Deployed source branch: https://github.com/Manas-Jain-24/brandcheck/tree/judge-h
 
 1. Sign in and create a workspace. New workspaces start with generic claim/tone guidance and no fictional brand facts. NovaDesk example data is an explicit opt-in.
 2. Use Brand guidelines to define positioning, tone, retired/preferred names and evidence. Changes become proposals; an admin approves or rejects them.
-3. Write content or import PDF/DOCX/TXT/Markdown directly into the content editor. Save text plus its page/paragraph location map. Original files remain on the device.
-4. Run rules or consent to live Google Gemini review. Findings, source references, model identity, assessment and fallback status are saved with the revision. Corrections remain optional and need a new saved review.
-5. Submit the saved revision. A separate reviewer comments, requests changes or approves with a reason. Self-review is denied on the server. Revising approved content invalidates its approval.
+3. Write content or import PDF/DOCX/TXT/Markdown directly into the content editor. Attach a PNG/JPEG/WebP image with alt text, a client-side SHA-256 fingerprint and a small metadata-stripped preview. Save text, image metadata and page/paragraph location maps. Original files remain on the device.
+4. Run rules or consent to live Google Gemini text review. Findings, source references, model identity, source-linked priority and fallback status are saved with the revision. AI prose is not accepted as a freeform compliance verdict; saved summaries are derived from validated findings. Corrections remain optional and need a new saved review.
+5. Assign a workspace reviewer and submit the saved revision. The reviewer inbox shows assigned and unassigned submissions; a link opens the exact draft after sign-in. A separate reviewer comments, requests changes or approves with a reason. The server denies self-review and decisions by the wrong assigned reviewer. Revising approved content invalidates its approval.
 6. Approved policy changes recheck stored content and mark affected decisions/submissions for review. Original proposal differences and old/new policy packs remain in history.
 
-The workspace has Content, Brand guidelines, People & access, and Activity navigation. Admins can grant and remove creator/reviewer access. Sign-in establishes identity; it never grants access to another workspace by itself.
+The workspace has Content, Review inbox, Brand guidelines, People & access, and Activity navigation. Admins can grant and remove creator/reviewer access. Sign-in establishes identity; it never grants access to another workspace by itself. Invitations and review links are shared manually; no email is sent by the service.
 
 ## Public exploration
 
@@ -32,7 +32,9 @@ Browser → same-origin workspace API → private runtime key → Google Gemini.
 
 PDF.js (Apache-2.0), Mammoth (BSD-2-Clause) and fflate (MIT) provide parsing and ZIP inspection. The upstream PDF worker is copied to a generated static asset before dev/build with its license notice retained. Shared document findings retain page/paragraph locations after reload and policy rechecks. Editing individual sections rebuilds offsets; switching to plain text explicitly discards the map.
 
-AI findings must quote content present in the input and cite an active source. This structural validation does not prove the model's interpretation is correct. Scores and rewrites are advisory. Failed AI analysis saves labelled rule-only results with no simulated assessment. Editing content or changing policy clears stale AI metadata. Submission preserves a matching live assessment; it does not silently replace it with a rule-only review.
+AI findings must quote content present in the input and cite an active source of a compatible category. Stored AI explanations quote the approved source; freeform model assessments and unsupported rewrite instructions are discarded. The saved priority and any rewrite are constructed from validated findings and direct source-linked replacements. This structural grounding does not prove the model's interpretation is correct. Failed AI analysis saves labelled rule-only results with no simulated assessment. Editing content or changing policy clears stale AI metadata. Submission preserves a matching live assessment; it does not silently replace it with a rule-only review.
+
+Image checks compare exact fingerprints with admin-approved asset records, check alt text, and sample a graphic's dominant colour against approved hex colours. The colour test is a heuristic for graphics, not an aesthetic classifier; photographs are excluded. Old workspaces without image guidelines receive clearly labelled built-in accessibility and policy-gap findings. Only a small browser-generated preview, fingerprint and metadata are stored in D1. Image pixels are never sent to Gemini through the shared review endpoint.
 
 Audit events have no edit/delete API, but database administrators are trusted. This is not a signed, administrator-proof ledger or evidence of SOC2 certification.
 
@@ -46,7 +48,7 @@ The normal brand editor does not require JSON. Advanced JSON import remains avai
 
 `GET /api/workspaces`: authenticated identity and accessible workspaces.  
 `GET /api/workspaces?workspaceId=<id>`: role, drafts, members, policies, proposals and latest events.  
-`POST /api/workspaces`: validated JSON actions `createWorkspace`, `invite`, `removeMember`, `createDraft`, `saveDraft`, `reviewAI`, `recheckDraft`, `submit`, `comment`, `decide`, `proposePolicy`, `syncPolicy`, `decidePolicy`.
+`POST /api/workspaces`: validated JSON actions `createWorkspace`, `invite`, `removeMember`, `createDraft`, `saveDraft`, `assignReviewer`, `reviewAI`, `recheckDraft`, `submit`, `comment`, `decide`, `proposePolicy`, `syncPolicy`, `decidePolicy`.
 
 Draft mutations require the current revision. `reviewAI` requires explicit `consent: true`; it sends only the saved draft and approved pack, never caller-supplied alternate brand rules. Imported content may include a validated `document` map of ordered labelled ranges covering the text. Identity is supplied by Sites server context, never submitted JSON. Writes require the exact same-origin Origin. Anonymous calls return 401; inaccessible workspaces return 404; unauthorized actions return 403; stale mutations return 409. The body stream is limited to 96 KB.
 
@@ -59,11 +61,11 @@ Use Node 22.13+ and pnpm 11.25.0. Configure `GEMINI_API_KEY` and optional `GEMIN
 - `pnpm dev`: local preview with the starter's development sign-in facility.
 - `pnpm exec tsc --noEmit`: strict type checking.
 - `pnpm run db:generate`: additive migration generation; inspect generated SQL/metadata.
-- `node scripts/test-shared-review.mjs`: 35 SQLite-backed service/transport/document tests using actual migrations.
+- `node scripts/test-shared-review.mjs`: 40 SQLite-backed service/transport/document tests using actual migrations.
 - `node scripts/create-document-fixtures.mjs`: real two-page PDF fixture in ignored `work/`.
 - Build and publish through the Sites skill helpers to retain Worker metadata and apply production migrations.
 
-Tests cover organization isolation, roles, self-review, revocation, stale/concurrent writes, transaction rollback, policy proposals/regression, document mapping, real DOCX extraction, AI consent/fallback/provenance and stale AI results. Browser QA should exercise the full new-brand → imported document → saved review → approval journey; distinguish local, hosted and two-account results in release notes.
+Tests cover organization isolation, roles, self-review, assigned reviewer enforcement, revocation, stale/concurrent writes, transaction rollback, policy proposals/regression, document mapping, saved image review, real DOCX extraction, AI consent/fallback/provenance and stale AI results. Browser QA should exercise the full new-brand → imported document/image → saved review → approval journey; distinguish local, hosted and two-account results in release notes.
 
 ## Privacy and current limits
 
@@ -73,7 +75,7 @@ The hosted service currently shares an AI allowance of 60 requests per UTC day a
 
 Workspace drafts support 5,000 characters, up to 100 drafts per workspace and the latest 200 displayed activity events. The document tool supports files up to 5 MB, 20 text-based PDF pages, 200 DOCX paragraphs and 40,000 extracted characters; it displays at most 200 findings with a notice. Longer documents can be locally reviewed but must be shortened before saved-workspace handoff. No scanned-document OCR, pixel-coordinate highlights, original Word page/line fidelity, presentation or Figma import is implemented.
 
-Visual checks are limited to the example desk's asset hashes/alt text and the document tool's explicit text-contrast calculation. No vision classifier, logo clearance or automatic palette inspection. There are no email/Slack/Teams notifications, scheduled expiry sweeps, billing, retention/deletion administration or general history pagination. The project is a functional hackathon product with explicit limits, not a promise of legal/brand compliance or audited enterprise readiness.
+Visual checks use exact asset hashes, alt text and a sampled dominant-colour heuristic for graphics in the saved workspace; the document tool also calculates explicit text contrast. No vision classifier, logo clearance, OCR-based image analysis or automatic assessment of full-image palette usage. There are in-app reviewer inbox counts and manually shared review links, but no email/Slack/Teams notifications, scheduled expiry sweeps, billing, retention/deletion administration or general history pagination. The project is a functional hackathon product with explicit limits, not a promise of legal/brand compliance or audited enterprise readiness.
 
 ## Reuse and assistance
 

@@ -168,9 +168,9 @@ export function reviewDraft(
           location: `Image: ${body.image.name}`,
           excerpt: body.image.name,
           explanation:
-            "The uploaded file fingerprint is not in this demo’s approved asset library. This does not prove the visual is off-brand.",
+            "The uploaded file fingerprint is not in this workspace’s approved asset library. This does not prove the visual is off-brand.",
           suggestion:
-            "Ask an authorised reviewer to confirm the visual, or choose the approved NovaDesk launch asset.",
+            "Ask an authorised reviewer to confirm the visual, or choose an approved asset.",
         }),
       );
   }

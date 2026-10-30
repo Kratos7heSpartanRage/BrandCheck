@@ -3,19 +3,20 @@ import { policySchema, currentPolicy, defaultPolicy, starterPolicy, policyDiff, 
 import type { Policy } from "./policy";
 import type { AiReviewResult } from "../components/brandcheck/aiReview";
 import type { Finding } from "../components/brandcheck/model";
-import { documentSchema, validDocument, checkContent, locateFinding } from "./content";
-import type { DocumentMap } from "./content";
+import { documentSchema, imageSchema, validDocument, checkContent, locateFinding } from "./content";
+import type { DocumentMap, ImageMeta } from "./content";
+import { groundedAssessment } from "./grounded-assessment";
 
 export type Identity = { userId: string; email: string };
 type Member = { role: "admin" | "creator" | "reviewer" };
-type Draft = { id: string; workspace_id: string; author_id: string; title: string; body: string; version: number; state: string; updated_at: string; mutation: string; findings: string; policy_version: number; document: string | null; review_meta: string | null };
+type Draft = { id: string; workspace_id: string; author_id: string; title: string; body: string; version: number; state: string; updated_at: string; mutation: string; findings: string; policy_version: number; document: string | null; review_meta: string | null; image: string | null; reviewer_email: string | null };
 type Services = { aiReview?: (title: string, text: string, pack: Policy) => Promise<AiReviewResult & { model?: string }> };
 export class ReviewError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 const id = z.string().uuid();
 const version = z.number().int().min(1).max(1_000_000);
-const content = { title: z.string().trim().min(1).max(100), body: z.string().max(5_000), document: documentSchema.nullable().optional() };
+const content = { title: z.string().trim().min(1).max(100), body: z.string().max(5_000), document: documentSchema.nullable().optional(), image: imageSchema.nullable().optional() };
 export const sharedAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("createWorkspace"), name: z.string().trim().min(1).max(100), useExamplePack: z.boolean().default(false) }),
   z.object({ action: z.literal("invite"), workspaceId: id, email: z.string().email().max(254), role: z.enum(["creator", "reviewer"]) }),
@@ -27,6 +28,7 @@ export const sharedAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("saveDraft"), workspaceId: id, draftId: id, version, ...content }),
   z.object({ action: z.literal("submit"), workspaceId: id, draftId: id, version }),
   z.object({ action: z.literal("recheckDraft"), workspaceId: id, draftId: id, version }),
+  z.object({ action: z.literal("assignReviewer"), workspaceId: id, draftId: id, version, email: z.string().email().max(254) }),
   z.object({ action: z.literal("reviewAI"), workspaceId: id, draftId: id, version, consent: z.literal(true) }),
   z.object({ action: z.literal("comment"), workspaceId: id, draftId: id, version, note: z.string().trim().min(1).max(2_000) }),
   z.object({ action: z.literal("decide"), workspaceId: id, draftId: id, version, decision: z.enum(["approved", "changes_requested"]), note: z.string().trim().min(1).max(2_000) }),
@@ -49,7 +51,7 @@ export async function readWorkspace(db: D1Database, user: Identity, workspaceId:
   id.parse(workspaceId);
   const member = await membership(db, user, workspaceId);
   const result = await db.batch<Record<string, unknown>>([
-    db.prepare("SELECT id, title, body, version, state, author_id, updated_at, findings, policy_version, document, review_meta FROM shared_drafts WHERE workspace_id = ? ORDER BY updated_at DESC LIMIT 100").bind(workspaceId),
+    db.prepare("SELECT id, title, body, version, state, author_id, updated_at, findings, policy_version, document, review_meta, image, reviewer_email FROM shared_drafts WHERE workspace_id = ? ORDER BY updated_at DESC LIMIT 100").bind(workspaceId),
     db.prepare("SELECT id, draft_id, actor_email, action, version, detail, created_at FROM audit_events WHERE workspace_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 200").bind(workspaceId),
     db.prepare("SELECT email, role FROM memberships WHERE workspace_id = ? ORDER BY role, email LIMIT 100").bind(workspaceId),
     db.prepare("SELECT id, base_version, payload, state, origin, created_at, difference FROM policy_proposals WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 30").bind(workspaceId),
@@ -116,10 +118,11 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     ];
     const rechecks = drafts.map(draft => {
       const doc: DocumentMap | null = draft.document ? JSON.parse(draft.document) : null;
-      const findings = checkContent(pack, draft.title, draft.body, doc);
-      const affected = findingSignature(checkContent(base.pack, draft.title, draft.body, doc)) !== findingSignature(findings) || (["approved", "submitted"].includes(draft.state) && draft.review_meta !== null);
+      const image: ImageMeta | null = draft.image ? JSON.parse(draft.image) : null;
+      const findings = checkContent(pack, draft.title, draft.body, doc, image);
+      const affected = findingSignature(checkContent(base.pack, draft.title, draft.body, doc, image)) !== findingSignature(findings) || (["approved", "submitted"].includes(draft.state) && draft.review_meta !== null);
       const state = affected && ["approved", "submitted"].includes(draft.state) ? "needs_review" : draft.state;
-      return { id: draft.id, version: draft.version, findings: JSON.stringify(findings), state, eventId: crypto.randomUUID(), detail: JSON.stringify({ policyVersion: nextVersion, affected, beforeCount: checkContent(base.pack, draft.title, draft.body, doc).length, afterCount: findings.length, state }) };
+      return { id: draft.id, version: draft.version, findings: JSON.stringify(findings), state, eventId: crypto.randomUUID(), detail: JSON.stringify({ policyVersion: nextVersion, affected, beforeCount: checkContent(base.pack, draft.title, draft.body, doc, image).length, afterCount: findings.length, state }) };
     });
     const encoded = JSON.stringify(rechecks);
     if (new TextEncoder().encode(encoded).length > 700_000) throw new ReviewError(413, "This policy produces too many findings for a synchronous recheck. Reduce its scope and retry.");
@@ -139,7 +142,7 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     const existing = await db.prepare("SELECT role FROM memberships WHERE workspace_id = ? AND email = ?").bind(action.workspaceId, target).first<Member>();
     if (!existing) throw new ReviewError(404, "Member not found.");
     if (existing.role === "admin" || target === email(user)) throw new ReviewError(403, "The workspace owner's access cannot be removed here.");
-    await db.batch([db.prepare("DELETE FROM memberships WHERE workspace_id = ? AND email = ? AND role != 'admin'").bind(action.workspaceId, target), event(db, user, action.workspaceId, "member_removed", { email: target, note: action.note })]);
+    await db.batch([db.prepare("DELETE FROM memberships WHERE workspace_id = ? AND email = ? AND role != 'admin'").bind(action.workspaceId, target), db.prepare("UPDATE shared_drafts SET reviewer_email = NULL, version = version + 1, updated_at = ? WHERE workspace_id = ? AND reviewer_email = ?").bind(now, action.workspaceId, target), event(db, user, action.workspaceId, "member_removed", { email: target, note: action.note, assignmentsCleared: true })]);
     return { removed: true };
   }
   if (action.action === "invite") {
@@ -159,7 +162,7 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     const draftId = crypto.randomUUID();
     const token = crypto.randomUUID();
     const result = await db.batch([
-      db.prepare("INSERT INTO shared_drafts (id, workspace_id, author_id, title, body, version, state, updated_at, mutation, document) SELECT ?, ?, ?, ?, ?, 1, 'draft', ?, ?, ? WHERE (SELECT COUNT(*) FROM shared_drafts WHERE workspace_id = ?) < 100").bind(draftId, action.workspaceId, user.userId, action.title, action.body, now, token, action.document ? JSON.stringify(action.document) : null, action.workspaceId),
+      db.prepare("INSERT INTO shared_drafts (id, workspace_id, author_id, title, body, version, state, updated_at, mutation, document, image, policy_version) SELECT ?, ?, ?, ?, ?, 1, 'draft', ?, ?, ?, ?, COALESCE((SELECT version FROM workspace_policies WHERE workspace_id = ?), 0) WHERE (SELECT COUNT(*) FROM shared_drafts WHERE workspace_id = ?) < 100").bind(draftId, action.workspaceId, user.userId, action.title, action.body, now, token, action.document ? JSON.stringify(action.document) : null, action.image ? JSON.stringify(action.image) : null, action.workspaceId, action.workspaceId),
       db.prepare("INSERT INTO audit_events (id, workspace_id, draft_id, actor_id, actor_email, action, version, detail, created_at) SELECT ?, ?, ?, ?, ?, 'draft_created', 1, ?, ? WHERE EXISTS (SELECT 1 FROM shared_drafts WHERE id = ?)").bind(crypto.randomUUID(), action.workspaceId, draftId, user.userId, email(user), JSON.stringify(contentSnapshot(action)), now, draftId),
     ]);
     if (!result[0].meta.changes) throw new ReviewError(409, "This workspace has reached its 100-draft limit.");
@@ -173,6 +176,20 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     if (!result.meta.changes) throw new ReviewError(409, "This draft has changed. Refresh before commenting.");
     return { commented: true };
   }
+  if (action.action === "assignReviewer") {
+    if (member.role !== "admin" && draft.author_id !== user.userId) throw new ReviewError(403, "Only an admin or the creator can assign a reviewer.");
+    if (draft.state === "approved") throw new ReviewError(409, "Approved content does not need a new assignment.");
+    const target = action.email.toLowerCase().trim();
+    const assignee = await db.prepare("SELECT role FROM memberships WHERE workspace_id = ? AND email = ?").bind(action.workspaceId, target).first<Member>();
+    if (!assignee || !["admin", "reviewer"].includes(assignee.role) || target === email(user) && draft.author_id === user.userId) throw new ReviewError(400, "Choose another workspace reviewer or admin.");
+    const token = crypto.randomUUID();
+    const result = await db.batch([
+      db.prepare("UPDATE shared_drafts SET reviewer_email = ?, version = version + 1, updated_at = ?, mutation = ? WHERE id = ? AND workspace_id = ? AND version = ?").bind(target, now, token, draft.id, action.workspaceId, draft.version),
+      db.prepare("INSERT INTO audit_events (id, workspace_id, draft_id, actor_id, actor_email, action, version, detail, created_at) SELECT ?, ?, ?, ?, ?, 'reviewer_assigned', ?, ?, ? WHERE EXISTS (SELECT 1 FROM shared_drafts WHERE id = ? AND mutation = ?)").bind(crypto.randomUUID(), action.workspaceId, draft.id, user.userId, email(user), draft.version + 1, JSON.stringify({ reviewer: target }), now, draft.id, token),
+    ]);
+    if (!result[0].meta.changes) throw new ReviewError(409, "The draft changed. Refresh before assigning.");
+    return { draftId: draft.id, version: draft.version + 1, state: draft.state };
+  }
   let nextState = draft.state;
   let title = draft.title;
   let body = draft.body;
@@ -181,6 +198,7 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
   let findings = draft.findings;
   let policyVersion = draft.policy_version;
   let doc: DocumentMap | null = draft.document ? JSON.parse(draft.document) : null;
+  let image: ImageMeta | null = draft.image ? JSON.parse(draft.image) : null;
   let reviewMeta = draft.review_meta;
   if (action.action === "reviewAI") {
     if (!draft.body.trim()) throw new ReviewError(400, "Add content before running an AI review.");
@@ -188,24 +206,25 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     const result = await services.aiReview(draft.title, draft.body, policy.pack);
     // A revoked member cannot commit the result of a long-running review.
     await membership(db, user, action.workspaceId);
-    const checked = checkContent(policy.pack, draft.title, draft.body, doc);
+    const checked = checkContent(policy.pack, draft.title, draft.body, doc, image);
     if (!result.isSimulated && !result.error) for (const item of result.findings) {
       const finding = locateFinding(item, draft.title, draft.body, doc);
       if (!checked.some(f => f.category === finding.category && f.location === finding.location && (f.excerpt.toLowerCase().includes(finding.excerpt.toLowerCase()) || finding.excerpt.toLowerCase().includes(f.excerpt.toLowerCase())))) checked.push(finding);
     }
     findings = JSON.stringify(checked); policyVersion = policy.version;
     const live = !result.isSimulated && !result.error;
-    reviewMeta = JSON.stringify({ mode: live ? "hybrid" : "rules-fallback", model: result.model || null, completedAt: new Date().toISOString(), notice: live ? "Live AI and rule findings saved. Human review is required." : "AI was unavailable; rule findings were saved. You can retry the AI review.", assessment: live ? result.assessment : null });
+    reviewMeta = JSON.stringify({ mode: live ? "hybrid" : "rules-fallback", model: result.model || null, completedAt: new Date().toISOString(), notice: live ? "Live AI and rule findings saved. Priority uses source-linked findings; human review is required." : "AI was unavailable; rule findings were saved. You can retry the AI review.", assessment: live ? groundedAssessment(checked, draft.body) : null });
     if (["approved", "submitted"].includes(draft.state)) nextState = "needs_review";
-    detail = { policyVersion, findings: checked, review: JSON.parse(reviewMeta), consent: true, externalService: "Google Gemini", sources: policy.pack.sources, snapshot: { ...contentSnapshot(draft), document: doc } };
+    detail = { policyVersion, findings: checked, review: JSON.parse(reviewMeta), consent: true, externalService: "Google Gemini", sources: policy.pack.sources, snapshot: { ...contentSnapshot(draft), document: doc, image } };
   } else if (action.action === "recheckDraft") {
-    const checked = checkContent(policy.pack, draft.title, draft.body, doc); reviewMeta = null;
+    const checked = checkContent(policy.pack, draft.title, draft.body, doc, image); reviewMeta = null;
     findings = JSON.stringify(checked); policyVersion = policy.version;
     if (["approved", "submitted"].includes(draft.state)) nextState = "needs_review";
     detail = { policyVersion, findings: checked, previousState: draft.state };
   } else if (action.action === "decide") {
     if (member.role !== "reviewer" && member.role !== "admin") throw new ReviewError(403, "Only reviewers can decide.");
     if (draft.author_id === user.userId) throw new ReviewError(403, "You cannot approve or review your own draft.");
+    if (draft.reviewer_email && draft.reviewer_email !== email(user) && member.role !== "admin") throw new ReviewError(403, "This revision is assigned to another reviewer.");
     if (draft.state !== "submitted") throw new ReviewError(409, "Only a submitted revision can receive a decision.");
     if (draft.policy_version !== policy.version) throw new ReviewError(409, "The policy changed. The creator must save and resubmit this draft.");
     nextState = action.decision;
@@ -214,29 +233,29 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     if (member.role === "reviewer" || draft.author_id !== user.userId) throw new ReviewError(403, "Only the original creator can edit or submit this draft.");
     if (action.action === "submit") {
       if (!["draft", "needs_review", "changes_requested"].includes(draft.state)) throw new ReviewError(409, "This revision is already submitted or approved.");
-      if (!draft.body.trim()) throw new ReviewError(400, "Add content before submitting.");
+      if (!draft.body.trim() && !image) throw new ReviewError(400, "Add content or an image before submitting.");
       nextState = "submitted";
       // Preserve a live review only while its exact content and policy still match.
-      const checked = draft.review_meta && draft.policy_version === policy.version ? JSON.parse(draft.findings) as Finding[] : checkContent(policy.pack, draft.title, draft.body, doc);
+      const checked = draft.review_meta && draft.policy_version === policy.version ? JSON.parse(draft.findings) as Finding[] : checkContent(policy.pack, draft.title, draft.body, doc, image);
       if (draft.policy_version !== policy.version) reviewMeta = null;
       findings = JSON.stringify(checked); policyVersion = policy.version;
-      detail = { snapshot: { ...contentSnapshot(draft), document: doc }, reviewMode: reviewMeta ? JSON.parse(reviewMeta).mode : "rules", brandPack: policy.pack.name, sources: policy.pack.sources, policyVersion, findings: checked };
+      detail = { snapshot: { ...contentSnapshot(draft), document: doc, image }, reviewMode: reviewMeta ? JSON.parse(reviewMeta).mode : "rules", brandPack: policy.pack.name, sources: policy.pack.sources, policyVersion, findings: checked, reviewer: draft.reviewer_email };
     } else {
       if (draft.state === "submitted") throw new ReviewError(409, "This revision is awaiting review. A reviewer must request changes before it can be edited.");
-      title = action.title; body = action.body; nextState = "draft"; findings = "[]"; reviewMeta = null; doc = action.document ?? null;
-      detail = { snapshot: { title, body, document: doc }, previousState: draft.state };
+      title = action.title; body = action.body; nextState = "draft"; findings = "[]"; reviewMeta = null; doc = action.document ?? null; image = action.image ?? null;
+      detail = { snapshot: { title, body, document: doc, image }, previousState: draft.state };
     }
   }
   // Compare-and-swap and event are one D1 transaction. A unique mutation token prevents
   // a losing concurrent request from recording an approval/event it did not perform.
   const token = crypto.randomUUID();
   const results = await db.batch([
-    db.prepare("UPDATE shared_drafts SET title = ?, body = ?, state = ?, findings = ?, policy_version = ?, document = ?, review_meta = ?, version = version + 1, updated_at = ?, mutation = ? WHERE id = ? AND workspace_id = ? AND version = ? AND COALESCE((SELECT version FROM workspace_policies WHERE workspace_id = ?), 0) = ?").bind(title, body, nextState, findings, policyVersion, doc ? JSON.stringify(doc) : null, reviewMeta, now, token, draft.id, action.workspaceId, action.version, action.workspaceId, policy.version),
+    db.prepare("UPDATE shared_drafts SET title = ?, body = ?, state = ?, findings = ?, policy_version = ?, document = ?, image = ?, review_meta = ?, version = version + 1, updated_at = ?, mutation = ? WHERE id = ? AND workspace_id = ? AND version = ? AND COALESCE((SELECT version FROM workspace_policies WHERE workspace_id = ?), 0) = ?").bind(title, body, nextState, findings, policyVersion, doc ? JSON.stringify(doc) : null, image ? JSON.stringify(image) : null, reviewMeta, now, token, draft.id, action.workspaceId, action.version, action.workspaceId, policy.version),
     db.prepare("INSERT INTO audit_events (id, workspace_id, draft_id, actor_id, actor_email, action, version, detail, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM shared_drafts WHERE id = ? AND mutation = ?)").bind(crypto.randomUUID(), action.workspaceId, draft.id, user.userId, email(user), action.action === "decide" ? action.decision : action.action, action.version + 1, JSON.stringify(detail), now, draft.id, token),
   ]);
   if (!results[0].meta.changes) throw new ReviewError(409, "Another person changed this revision. Refresh before continuing.");
   return { draftId: draft.id, version: action.version + 1, state: nextState };
 }
-function contentSnapshot(value: { title: string; body: string; document?: string | DocumentMap | null }) {
-  return { title: value.title, body: value.body, ...("document" in value ? { document: typeof value.document === "string" ? JSON.parse(value.document) : value.document ?? null } : {}) };
+function contentSnapshot(value: { title: string; body: string; document?: string | DocumentMap | null; image?: string | ImageMeta | null }) {
+  return { title: value.title, body: value.body, ...("document" in value ? { document: typeof value.document === "string" ? JSON.parse(value.document) : value.document ?? null } : {}), ...("image" in value ? { image: typeof value.image === "string" ? JSON.parse(value.image) : value.image ?? null } : {}) };
 }
