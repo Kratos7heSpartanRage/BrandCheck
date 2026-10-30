@@ -459,3 +459,13 @@ test("visual observations reject invented sources and mark OCR terminology as un
   assert.ok(result.findings.some(f => f.id.startsWith("visual:ocr:") && f.explanation.includes("may have read")));
   assert.equal(groundVisualResult({ visibleText: 1, observations: [] }, image, pack, "test-model"), null);
 });
+test("visual review does not mistake an approved longer name or file-hash statement for an image defect", () => {
+  const image = { name: "poster.webp", sha256: "e".repeat(64) };
+  const pack = structuredClone(defaultPolicy);
+  pack.terms = [{ id: "rename", retired: "NovaDesk", preferred: "NovaDesk One", sourceId: "TERM-001" }];
+  const approved = groundVisualResult({ visibleText: "NovaDesk One", observations: [{ sourceId: "ASSET-001", observation: "The asset fingerprint does not match the approved library", suggestedAction: "Replace it" }] }, image, pack, "test-model");
+  assert.equal(approved.findings.length, 0);
+  const mixed = groundVisualResult({ visibleText: "NovaDesk One and NovaDesk", observations: [] }, image, pack, "test-model");
+  assert.equal(mixed.findings.length, 1);
+  assert.equal(mixed.findings[0].category, "Terminology");
+});

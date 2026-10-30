@@ -17,6 +17,8 @@ export function groundVisualResult(raw: unknown, image: ImageMeta, pack: Policy,
   for (const [index, observation] of parsed.data.observations.entries()) {
     const source = sources.get(observation.sourceId);
     if (!source) continue;
+    // A model cannot visually establish SHA-256 identity or approval status.
+    if (/fingerprint|sha[ -]?256|approved (?:asset )?library|file hash/i.test(observation.observation)) continue;
     findings.push({
       id: `visual:${image.sha256.slice(0,12)}:${index}`,
       category: source.kind === "Accessibility" ? "Accessibility" : source.kind === "Messaging" ? "Messaging" : source.kind === "Terminology" ? "Terminology" : "Asset usage",
@@ -29,7 +31,10 @@ export function groundVisualResult(raw: unknown, image: ImageMeta, pack: Policy,
   const visible = parsed.data.visibleText.toLocaleLowerCase();
   for (const term of pack.terms) {
     const source = sources.get(term.sourceId);
-    if (!source || source.kind !== "Terminology" || !visible.includes(term.retired.toLocaleLowerCase()) || findings.some(f => f.sourceId === source.id && f.excerpt.toLocaleLowerCase().includes(term.retired.toLocaleLowerCase()))) continue;
+    if (!source || source.kind !== "Terminology") continue;
+    const withoutPreferred = visible.replaceAll(term.preferred.toLocaleLowerCase(), " ");
+    const escaped = term.retired.toLocaleLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (!new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u").test(withoutPreferred) || findings.some(f => f.sourceId === source.id && f.excerpt.toLocaleLowerCase().includes(term.retired.toLocaleLowerCase()))) continue;
     findings.push({
       id: `visual:ocr:${image.sha256.slice(0,12)}:${term.id}`,
       category: "Terminology", severity: "Suggestion", evidenceStatus: "Review suggestion", location: `Image: ${image.name}`, excerpt: term.retired,
