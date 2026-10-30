@@ -562,8 +562,8 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
     }
     try {
       const text = await file.text();
-      if (!text.trim() || text.length > 5_000) {
-        setToast("The file must contain 1–5,000 characters of text.");
+      if (!text.trim() || text.length > 10_000) {
+        setToast("The file must contain 1–10,000 characters of text.");
         return;
       }
       updateBody({ title: file.name, channel: "Document", text });
@@ -1085,9 +1085,9 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
                       state.status === "awaiting"
                     }
                     rows={7}
-                    maxLength={5000}
+                    maxLength={10000}
                   />
-                  <small>{state.body.text.length} / 5,000 characters</small>
+                  <small>{state.body.text.length} / 10,000 characters</small>
                 </label>
                 {state.persona === "creator" && state.status !== "awaiting" && (
                   <div className="import-row">

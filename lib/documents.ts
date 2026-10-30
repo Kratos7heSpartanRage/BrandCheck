@@ -2,7 +2,7 @@ export type DocumentPart = { label: string; text: string };
 export type ExtractedDocument = { name: string; parts: DocumentPart[]; warnings: string[] };
 
 export async function extractDocument(file: File): Promise<ExtractedDocument> {
-  if (file.size > 5_000_000) throw new Error("Choose a file smaller than 5 MB.");
+  if (file.size > 15_000_000) throw new Error("Choose a file smaller than 15 MB.");
   const extension = file.name.split(".").pop()?.toLowerCase();
   let parts: DocumentPart[] = []; const warnings: string[] = [];
   if (extension === "pdf") {
@@ -13,7 +13,7 @@ export async function extractDocument(file: File): Promise<ExtractedDocument> {
     const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), useSystemFonts: true });
     try {
       const pdf = await task.promise;
-      if (pdf.numPages > 20) throw new Error("This demo supports PDFs up to 20 pages.");
+      if (pdf.numPages > 40) throw new Error("This demo supports PDFs up to 40 pages.");
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
         const page = await pdf.getPage(pageNumber);
         const content = await page.getTextContent();
@@ -44,8 +44,8 @@ export async function extractDocument(file: File): Promise<ExtractedDocument> {
     parts = (await file.text()).split(/\n\s*\n/).filter(text => text.trim()).map((text, index) => ({ label: `Paragraph ${index + 1}`, text: text.trim() }));
   } else throw new Error("Choose a PDF, DOCX, TXT or Markdown file.");
   if (!parts.some(part => part.text.trim())) throw new Error("No reviewable text was extracted. Scanned documents require OCR, which is not available here.");
-  if (parts.reduce((n, part) => n + part.text.length, 0) > 40_000) throw new Error("Extracted text exceeds 40,000 characters. Import a shorter document.");
-  if (parts.length > 200) throw new Error("This demo supports up to 200 paragraphs.");
+  if (parts.reduce((n, part) => n + part.text.length, 0) > 80_000) throw new Error("Extracted text exceeds 80,000 characters. Import a shorter document.");
+  if (parts.length > 400) throw new Error("This demo supports up to 400 paragraphs.");
   return { name: file.name, parts, warnings };
 }
 export function contrastRatio(foreground: string, background: string): number {

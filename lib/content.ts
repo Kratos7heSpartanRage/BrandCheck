@@ -3,11 +3,11 @@ import type { Finding } from "../components/brandcheck/model";
 import { reviewDraft } from "../components/brandcheck/review";
 import { checkPolicy } from "./policy";
 import type { Policy } from "./policy";
-export const documentSchema = z.object({ name: z.string().max(200), type: z.enum(["pdf", "docx", "txt", "md"]), segments: z.array(z.object({ label: z.string().min(1).max(80), start: z.number().int().min(0).max(5000), end: z.number().int().min(0).max(5000) })).min(1).max(200) });
+export const documentSchema = z.object({ name: z.string().max(200), type: z.enum(["pdf", "docx", "txt", "md"]), segments: z.array(z.object({ label: z.string().min(1).max(80), start: z.number().int().min(0).max(10000), end: z.number().int().min(0).max(10000) })).min(1).max(400) });
 export type DocumentMap = z.infer<typeof documentSchema>;
 export const imageSchema = z.object({
   name: z.string().trim().min(1).max(200), mime: z.enum(["image/png", "image/jpeg", "image/webp"]),
-  bytes: z.number().int().min(1).max(5_000_000), sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  bytes: z.number().int().min(1).max(15_000_000), sha256: z.string().regex(/^[a-f0-9]{64}$/),
   alt: z.string().max(500), decorative: z.boolean(), visualType: z.enum(["brand-graphic", "photo"]),
   dominantColor: z.string().regex(/^#[a-fA-F0-9]{6}$/).nullable(),
   previewDataUrl: z.string().max(64_000).regex(/^data:image\/(?:webp|jpeg);base64,[a-zA-Z0-9+/=]+$/).nullable(),

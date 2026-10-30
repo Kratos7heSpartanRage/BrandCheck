@@ -17,7 +17,7 @@ export class ReviewError extends Error {
 }
 const id = z.string().uuid();
 const version = z.number().int().min(1).max(1_000_000);
-const content = { title: z.string().trim().min(1).max(100), body: z.string().max(5_000), document: documentSchema.nullable().optional(), image: imageSchema.nullable().optional() };
+const content = { title: z.string().trim().min(1).max(100), body: z.string().max(10_000), document: documentSchema.nullable().optional(), image: imageSchema.nullable().optional() };
 export const sharedAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("createWorkspace"), name: z.string().trim().min(1).max(100), useExamplePack: z.boolean().default(false) }),
   z.object({ action: z.literal("invite"), workspaceId: id, email: z.string().email().max(254), role: z.enum(["creator", "reviewer"]) }),

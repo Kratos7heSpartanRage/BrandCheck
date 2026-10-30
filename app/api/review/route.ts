@@ -12,7 +12,7 @@ const sourceSchema = z.object({
 const inputSchema = z.object({
   body: z.object({
     title: z.string().max(100), channel: z.string().max(80),
-    audience: z.string().max(200), text: z.string().max(5_000),
+    audience: z.string().max(200), text: z.string().max(10_000),
     image: z.object({
       name: z.string().max(200), mime: z.string().max(80), bytes: z.number().int().min(0).max(750_000),
       sha256: z.string().max(128), alt: z.string().max(1_000), decorative: z.boolean(),
@@ -30,9 +30,9 @@ const assessmentSchema = z.object({
 const findingSchema = z.object({
   id: z.string().max(160), category: z.enum(["Terminology", "Claims", "Tone", "Accessibility", "Asset usage", "Messaging"]),
   severity: z.enum(["Needs attention", "Suggestion"]), evidenceStatus: z.enum(["Rule match", "Review suggestion", "Evidence needed"]),
-  location: z.string().max(500), excerpt: z.string().max(5_000), explanation: z.string().max(8_000),
+  location: z.string().max(500), excerpt: z.string().max(10_000), explanation: z.string().max(8_000),
   sourceId: z.string().max(80), sourceVersion: z.string().max(40), suggestion: z.string().max(8_000),
-  replacement: z.object({ from: z.string().max(5_000), to: z.string().max(5_000) }).optional(), detectedBy: z.literal("ai").optional(),
+  replacement: z.object({ from: z.string().max(10_000), to: z.string().max(10_000) }).optional(), detectedBy: z.literal("ai").optional(),
 });
 function json(value: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
   return Response.json(value, { status, headers: { "Cache-Control": "no-store", ...extraHeaders } });

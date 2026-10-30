@@ -24,7 +24,7 @@ async function handle(request: Request, write: boolean) {
     const reader = request.body?.getReader();
     if (!reader) return json({ error: "Missing request body." }, 400);
     const chunks: Uint8Array[] = []; let bytes = 0;
-    while (true) { const next = await reader.read(); if (next.done) break; bytes += next.value.byteLength; if (bytes > 96_000) { await reader.cancel(); return json({ error: "Request exceeds 96 KB." }, 413); } chunks.push(next.value); }
+    while (true) { const next = await reader.read(); if (next.done) break; bytes += next.value.byteLength; if (bytes > 160_000) { await reader.cancel(); return json({ error: "Request exceeds 160 KB." }, 413); } chunks.push(next.value); }
     const data = new Uint8Array(bytes); let offset = 0;
     for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
     return json(await mutateWorkspace(env.DB, user, JSON.parse(new TextDecoder().decode(data)), { aiReview: (title, text, pack) => runSavedAIReview(request, title, text, pack), visualReview: (image, pack) => runSavedVisualReview(request, image, pack) }));

@@ -1,7 +1,7 @@
 import type { ImageMeta } from "./content";
 
 export async function inspectImage(file: File): Promise<ImageMeta> {
-  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size < 1 || file.size > 5_000_000) throw new Error("Use a PNG, JPEG or WebP image under 5 MB.");
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size < 1 || file.size > 15_000_000) throw new Error("Use a PNG, JPEG or WebP image under 15 MB.");
   const bytes = await file.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   const sha256 = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2,"0")).join("");
