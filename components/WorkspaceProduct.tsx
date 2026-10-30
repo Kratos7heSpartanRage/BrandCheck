@@ -223,7 +223,7 @@ export default function WorkspaceProduct() {
           <div style={{ background: "#f5f9f3", padding: "12px", borderRadius: "8px", border: "1px solid #dbe6d6", fontSize: "13px" }}>
             <strong>Reviewer Approval Note:</strong>
             <p style={{ margin: "4px 0 0", fontStyle: "italic" }}>
-              "{JSON.parse(data.events.find(e => e.draft_id === selected.id && e.action === "approved")!.detail).note || "Approved without exception."}"
+              &ldquo;{JSON.parse(data.events.find(e => e.draft_id === selected.id && e.action === "approved")!.detail).note || "Approved without exception."}&rdquo;
             </p>
             <small style={{ color: "#6a7b70", marginTop: "6px" }}>
               Decided on {new Date(data.events.find(e => e.draft_id === selected.id && e.action === "approved")!.created_at).toLocaleString()}
