@@ -10,7 +10,7 @@ import ts from "typescript";
 
 const directory = resolve("work/shared-tests");
 await mkdir(directory, { recursive: true });
-for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["lib/content.ts", "content"], ["lib/grounded-assessment.ts", "grounded-assessment"], ["lib/policy.ts", "policy"], ["lib/documents.ts", "documents"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
+for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["lib/content.ts", "content"], ["lib/grounded-assessment.ts", "grounded-assessment"], ["lib/visual-grounding.ts", "visual-grounding"], ["lib/policy.ts", "policy"], ["lib/documents.ts", "documents"], ["lib/insights.ts", "insights"], ["lib/revisions.ts", "revisions"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
   let compiled = ts.transpileModule(await readFile(source, "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
   compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\/)(review|model|aiReview|policy|content|grounded-assessment)"/g, '"./$1.mjs"');
   await writeFile(resolve(directory, `${name}.mjs`), compiled);
@@ -21,6 +21,9 @@ const { runGroundedGeminiReview } = await import(pathToFileURL(resolve(directory
 const { contrastRatio, extractDocument } = await import(pathToFileURL(resolve(directory, "documents.mjs")).href);
 const { groundAIFinding } = await import(pathToFileURL(resolve(directory, "grounded-assessment.mjs")).href);
 const { checkContent } = await import(pathToFileURL(resolve(directory, "content.mjs")).href);
+const { buildInsights } = await import(pathToFileURL(resolve(directory, "insights.mjs")).href);
+const { revisionChoices, diffText } = await import(pathToFileURL(resolve(directory, "revisions.mjs")).href);
+const { groundVisualResult } = await import(pathToFileURL(resolve(directory, "visual-grounding.mjs")).href);
 const owner = { userId: "owner", email: "owner@example.com" };
 const creator = { userId: "creator", email: "creator@example.com" };
 const reviewer = { userId: "reviewer", email: "reviewer@example.com" };
@@ -407,4 +410,52 @@ test("removing an assigned reviewer clears assignment and invalidates a stale de
   assert.equal(draft.reviewer_email, null);
   assert.equal(draft.version, 4);
   await assert.rejects(mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 3, decision: "approved", note: "Stale" }), denied(404));
+});
+test("visual review needs consent, persists source-linked observations, and reopens a human decision", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  const image = { name: "launch.webp", mime: "image/webp", bytes: 100, sha256: "c".repeat(64), alt: "Launch card", decorative: false, visualType: "brand-graphic", dominantColor: "#ffffff", previewDataUrl: `data:image/webp;base64,${"a".repeat(80)}` };
+  await mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: 1, title: "Launch", body: "Our draft", image });
+  let calls = 0;
+  const services = { visualReview: async () => { calls++; return { model: "test-vision", observedText: "NovaDesk", findings: [{ id: `visual:${image.sha256.slice(0,12)}:0`, category: "Asset usage", severity: "Suggestion", evidenceStatus: "Review suggestion", location: "Image: launch.webp", excerpt: "Logo close to the edge", explanation: "Compare with ASSET-001", sourceId: "ASSET-001", sourceVersion: "1", suggestion: "Verify with the original", detectedBy: "ai" }] }; } };
+  await assert.rejects(mutate(db, creator, { action: "reviewVisual", workspaceId, draftId, version: 2, consent: false }, services));
+  assert.equal(calls, 0);
+  await mutate(db, creator, { action: "reviewVisual", workspaceId, draftId, version: 2, consent: true }, services);
+  let saved = (await read(db, reviewer, workspaceId)).drafts[0];
+  assert.equal(JSON.parse(saved.review_meta).observedText, "NovaDesk");
+  assert.ok(JSON.parse(saved.findings).some(f => f.id.startsWith("visual:")));
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 3 });
+  await mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 4, decision: "approved", note: "Checked image" });
+  await mutate(db, creator, { action: "reviewVisual", workspaceId, draftId, version: 5, consent: true }, services);
+  saved = (await read(db, reviewer, workspaceId)).drafts[0];
+  assert.equal(saved.state, "needs_review");
+  assert.equal(calls, 2);
+});
+test("insights count distinct content items and omit duplicate submission events", () => {
+  const finding = { id: "term:1", sourceId: "TERM-001", category: "Terminology", evidenceStatus: "Evidence needed" };
+  const drafts = [{ id: "a", findings: JSON.stringify([finding, { ...finding, id: "term:2" }]), state: "submitted", policy_version: 1 }, { id: "b", findings: JSON.stringify([finding]), state: "draft", policy_version: 1 }];
+  const events = [{ id: "r", draft_id: "a", action: "recheckDraft", version: 2, detail: JSON.stringify({ findings: [finding] }), created_at: "2026-10-30T00:00:00Z" }, { id: "s", draft_id: "a", action: "submit", version: 3, detail: JSON.stringify({ findings: [finding] }), created_at: "2026-10-30T00:01:00Z" }];
+  const result = buildInsights(drafts, events);
+  assert.deepEqual([result.rows[0].drafts, result.rows[0].findings, result.rows[0].reviewOccurrences], [2,3,1]);
+  assert.equal(result.awaitingDecision, 1);
+});
+test("revision comparison uses saved snapshots and preserves additions and removals", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  await mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: 1, title: "Launch", body: "Our revised draft" });
+  const state = await read(db, reviewer, workspaceId);
+  const choices = revisionChoices(state.events, draftId, state.drafts[0].version);
+  assert.ok(choices.some(choice => choice.version === 1 && choice.snapshot.body === "Our draft"));
+  const parts = diffText("Old line\nKeep line", "New line\nKeep line");
+  assert.ok(parts.some(part => part.kind === "removed" && part.text.includes("Old line")));
+  assert.ok(parts.some(part => part.kind === "added" && part.text.includes("New line")));
+  assert.ok(parts.some(part => part.kind === "same" && part.text.includes("Keep line")));
+});
+test("visual observations reject invented sources and mark OCR terminology as uncertain", () => {
+  const image = { name: "poster.webp", sha256: "d".repeat(64) };
+  const pack = structuredClone(defaultPolicy);
+  pack.terms = [{ id: "rename", retired: "Nova Desk", preferred: "NovaDesk", sourceId: "TERM-001" }];
+  const result = groundVisualResult({ visibleText: "Meet Nova Desk", observations: [{ sourceId: "invented", observation: "Unapproved logo", suggestedAction: "Replace logo" }, { sourceId: "ASSET-001", observation: "Graphic may use a different logo", suggestedAction: "Compare approved asset" }] }, image, pack, "test-model");
+  assert.equal(result.findings.length, 2);
+  assert.ok(result.findings.every(f => f.sourceId !== "invented" && f.evidenceStatus === "Review suggestion"));
+  assert.ok(result.findings.some(f => f.id.startsWith("visual:ocr:") && f.explanation.includes("may have read")));
+  assert.equal(groundVisualResult({ visibleText: 1, observations: [] }, image, pack, "test-model"), null);
 });

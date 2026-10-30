@@ -6,11 +6,12 @@ import type { Finding } from "../components/brandcheck/model";
 import { documentSchema, imageSchema, validDocument, checkContent, locateFinding } from "./content";
 import type { DocumentMap, ImageMeta } from "./content";
 import { groundedAssessment } from "./grounded-assessment";
+import type { VisualResult } from "./visual-grounding";
 
 export type Identity = { userId: string; email: string };
 type Member = { role: "admin" | "creator" | "reviewer" };
 type Draft = { id: string; workspace_id: string; author_id: string; title: string; body: string; version: number; state: string; updated_at: string; mutation: string; findings: string; policy_version: number; document: string | null; review_meta: string | null; image: string | null; reviewer_email: string | null };
-type Services = { aiReview?: (title: string, text: string, pack: Policy) => Promise<AiReviewResult & { model?: string }> };
+type Services = { aiReview?: (title: string, text: string, pack: Policy) => Promise<AiReviewResult & { model?: string }>; visualReview?: (image: ImageMeta, pack: Policy) => Promise<VisualResult> };
 export class ReviewError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
@@ -30,6 +31,7 @@ export const sharedAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("recheckDraft"), workspaceId: id, draftId: id, version }),
   z.object({ action: z.literal("assignReviewer"), workspaceId: id, draftId: id, version, email: z.string().email().max(254) }),
   z.object({ action: z.literal("reviewAI"), workspaceId: id, draftId: id, version, consent: z.literal(true) }),
+  z.object({ action: z.literal("reviewVisual"), workspaceId: id, draftId: id, version, consent: z.literal(true) }),
   z.object({ action: z.literal("comment"), workspaceId: id, draftId: id, version, note: z.string().trim().min(1).max(2_000) }),
   z.object({ action: z.literal("decide"), workspaceId: id, draftId: id, version, decision: z.enum(["approved", "changes_requested"]), note: z.string().trim().min(1).max(2_000) }),
 ]);
@@ -207,15 +209,28 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     // A revoked member cannot commit the result of a long-running review.
     await membership(db, user, action.workspaceId);
     const checked = checkContent(policy.pack, draft.title, draft.body, doc, image);
+    if (draft.policy_version === policy.version) for (const previous of JSON.parse(draft.findings) as Finding[]) if (previous.id.startsWith("visual:") && image && previous.id.includes(image.sha256.slice(0,12))) checked.push(previous);
     if (!result.isSimulated && !result.error) for (const item of result.findings) {
       const finding = locateFinding(item, draft.title, draft.body, doc);
       if (!checked.some(f => f.category === finding.category && f.location === finding.location && (f.excerpt.toLowerCase().includes(finding.excerpt.toLowerCase()) || finding.excerpt.toLowerCase().includes(f.excerpt.toLowerCase())))) checked.push(finding);
     }
     findings = JSON.stringify(checked); policyVersion = policy.version;
     const live = !result.isSimulated && !result.error;
-    reviewMeta = JSON.stringify({ mode: live ? "hybrid" : "rules-fallback", model: result.model || null, completedAt: new Date().toISOString(), notice: live ? "Live AI and rule findings saved. Priority uses source-linked findings; human review is required." : "AI was unavailable; rule findings were saved. You can retry the AI review.", assessment: live ? groundedAssessment(checked, draft.body) : null });
+    reviewMeta = JSON.stringify({ mode: live ? "hybrid" : "rules-fallback", model: result.model || null, completedAt: new Date().toISOString(), notice: live ? "Live AI and rule findings saved. Priority uses source-linked findings; human review is required." : "AI was unavailable; rule findings were saved. You can retry the AI review.", assessment: live ? groundedAssessment(checked, draft.body) : null, observedText: draft.review_meta ? JSON.parse(draft.review_meta).observedText || "" : "" });
     if (["approved", "submitted"].includes(draft.state)) nextState = "needs_review";
     detail = { policyVersion, findings: checked, review: JSON.parse(reviewMeta), consent: true, externalService: "Google Gemini", sources: policy.pack.sources, snapshot: { ...contentSnapshot(draft), document: doc, image } };
+  } else if (action.action === "reviewVisual") {
+    if (!image?.previewDataUrl) throw new ReviewError(400, "Upload and save an image with a preview before visual analysis.");
+    if (!services.visualReview) throw new ReviewError(503, "Visual AI is unavailable. Rule checks remain available.");
+    const result = await services.visualReview(image, policy.pack);
+    await membership(db, user, action.workspaceId);
+    const checked = checkContent(policy.pack, draft.title, draft.body, doc, image);
+    if (draft.policy_version === policy.version) for (const previous of JSON.parse(draft.findings) as Finding[]) if (previous.id.startsWith("ai:")) checked.push(previous);
+    checked.push(...result.findings);
+    findings = JSON.stringify(checked); policyVersion = policy.version;
+    reviewMeta = JSON.stringify({ mode: "visual", model: result.model, completedAt: new Date().toISOString(), notice: "AI inspected a reduced-size image preview. Visual observations are suggestions linked to approved sources and require human verification.", assessment: groundedAssessment(checked, draft.body), observedText: result.observedText });
+    if (["approved", "submitted"].includes(draft.state)) nextState = "needs_review";
+    detail = { policyVersion, findings: checked, review: JSON.parse(reviewMeta), consent: true, externalService: "Google Gemini", imagePreviewSent: true, originalImageSent: false, sources: policy.pack.sources, snapshot: { ...contentSnapshot(draft), document: doc, image } };
   } else if (action.action === "recheckDraft") {
     const checked = checkContent(policy.pack, draft.title, draft.body, doc, image); reviewMeta = null;
     findings = JSON.stringify(checked); policyVersion = policy.version;
