@@ -411,7 +411,7 @@ test("removing an assigned reviewer clears assignment and invalidates a stale de
   assert.equal(draft.version, 4);
   await assert.rejects(mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 3, decision: "approved", note: "Stale" }), denied(404));
 });
-test("visual review needs consent, persists source-linked observations, and reopens a human decision", async () => {
+test("visual AI leads need consent and a separate reviewer before becoming findings", async () => {
   const { db, workspaceId, draftId } = await fixture();
   const image = { name: "launch.webp", mime: "image/webp", bytes: 100, sha256: "c".repeat(64), alt: "Launch card", decorative: false, visualType: "brand-graphic", dominantColor: "#ffffff", previewDataUrl: `data:image/webp;base64,${"a".repeat(80)}` };
   await mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: 1, title: "Launch", body: "Our draft", image });
@@ -422,10 +422,17 @@ test("visual review needs consent, persists source-linked observations, and reop
   await mutate(db, creator, { action: "reviewVisual", workspaceId, draftId, version: 2, consent: true }, services);
   let saved = (await read(db, reviewer, workspaceId)).drafts[0];
   assert.equal(JSON.parse(saved.review_meta).observedText, "NovaDesk");
-  assert.ok(JSON.parse(saved.findings).some(f => f.id.startsWith("visual:")));
+  assert.ok(JSON.parse(saved.review_meta).visualCandidates.some(f => f.id.startsWith("visual:")));
+  assert.ok(!JSON.parse(saved.findings).some(f => f.id.startsWith("visual:")));
   await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 3 });
-  await mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 4, decision: "approved", note: "Checked image" });
-  await mutate(db, creator, { action: "reviewVisual", workspaceId, draftId, version: 5, consent: true }, services);
+  await assert.rejects(mutate(db, creator, { action: "resolveVisualCandidate", workspaceId, draftId, version: 4, candidateId: `visual:${image.sha256.slice(0,12)}:0`, decision: "confirmed", note: "My own image" }), denied(403));
+  await mutate(db, reviewer, { action: "resolveVisualCandidate", workspaceId, draftId, version: 4, candidateId: `visual:${image.sha256.slice(0,12)}:0`, decision: "confirmed", note: "Checked original image" });
+  saved = (await read(db, reviewer, workspaceId)).drafts[0];
+  assert.ok(JSON.parse(saved.findings).some(f => f.id.startsWith("visual:")));
+  assert.equal(JSON.parse(saved.review_meta).visualResolutions[0].decision, "confirmed");
+  await assert.rejects(mutate(db, reviewer, { action: "resolveVisualCandidate", workspaceId, draftId, version: 5, candidateId: `visual:${image.sha256.slice(0,12)}:0`, decision: "dismissed", note: "Duplicate" }), denied(409));
+  await mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 5, decision: "approved", note: "Checked image" });
+  await mutate(db, creator, { action: "reviewVisual", workspaceId, draftId, version: 6, consent: true }, services);
   saved = (await read(db, reviewer, workspaceId)).drafts[0];
   assert.equal(saved.state, "needs_review");
   assert.equal(calls, 2);

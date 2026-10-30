@@ -32,6 +32,7 @@ export const sharedAction = z.discriminatedUnion("action", [
   z.object({ action: z.literal("assignReviewer"), workspaceId: id, draftId: id, version, email: z.string().email().max(254) }),
   z.object({ action: z.literal("reviewAI"), workspaceId: id, draftId: id, version, consent: z.literal(true) }),
   z.object({ action: z.literal("reviewVisual"), workspaceId: id, draftId: id, version, consent: z.literal(true) }),
+  z.object({ action: z.literal("resolveVisualCandidate"), workspaceId: id, draftId: id, version, candidateId: z.string().min(1).max(160), decision: z.enum(["confirmed", "dismissed"]), note: z.string().trim().min(1).max(2_000) }),
   z.object({ action: z.literal("comment"), workspaceId: id, draftId: id, version, note: z.string().trim().min(1).max(2_000) }),
   z.object({ action: z.literal("decide"), workspaceId: id, draftId: id, version, decision: z.enum(["approved", "changes_requested"]), note: z.string().trim().min(1).max(2_000) }),
 ]);
@@ -192,6 +193,26 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     if (!result[0].meta.changes) throw new ReviewError(409, "The draft changed. Refresh before assigning.");
     return { draftId: draft.id, version: draft.version + 1, state: draft.state };
   }
+  if (action.action === "resolveVisualCandidate") {
+    if (member.role !== "reviewer" && member.role !== "admin" || draft.author_id === user.userId) throw new ReviewError(403, "A separate authorised reviewer must verify visual leads.");
+    if (draft.reviewer_email && draft.reviewer_email !== email(user) && member.role !== "admin") throw new ReviewError(403, "This revision is assigned to another reviewer.");
+    if (draft.state !== "submitted") throw new ReviewError(409, "Submit the content before a reviewer verifies visual leads.");
+    const policy = await currentPolicy(db, action.workspaceId);
+    if (draft.policy_version !== policy.version) throw new ReviewError(409, "The policy changed. Recheck and resubmit before verifying visual leads.");
+    const meta = draft.review_meta ? JSON.parse(draft.review_meta) as { visualCandidates?: Finding[]; visualResolutions?: Array<{ candidateId: string; decision: string; note: string; actor: string; at: string }>; assessment?: unknown } : null;
+    const candidate = meta?.visualCandidates?.find(item => item.id === action.candidateId);
+    if (!meta || !candidate || meta.visualResolutions?.some(item => item.candidateId === action.candidateId)) throw new ReviewError(409, "This visual lead is unavailable or already resolved.");
+    const findings = JSON.parse(draft.findings) as Finding[];
+    if (action.decision === "confirmed") findings.push({ ...candidate, explanation: `${candidate.explanation} Confirmed by an authorised reviewer after inspecting the original image.`, suggestion: candidate.suggestion });
+    const updated = { ...meta, visualResolutions: [...(meta.visualResolutions || []), { candidateId: candidate.id, decision: action.decision, note: action.note, actor: email(user), at: now }], assessment: groundedAssessment(findings, draft.body) };
+    const token = crypto.randomUUID();
+    const result = await db.batch([
+      db.prepare("UPDATE shared_drafts SET findings = ?, review_meta = ?, version = version + 1, mutation = ?, updated_at = ? WHERE id = ? AND workspace_id = ? AND version = ? AND COALESCE((SELECT version FROM workspace_policies WHERE workspace_id = ?), 0) = ?").bind(JSON.stringify(findings), JSON.stringify(updated), token, now, draft.id, action.workspaceId, draft.version, action.workspaceId, policy.version),
+      db.prepare("INSERT INTO audit_events (id, workspace_id, draft_id, actor_id, actor_email, action, version, detail, created_at) SELECT ?, ?, ?, ?, ?, 'visual_candidate_resolved', ?, ?, ? WHERE EXISTS (SELECT 1 FROM shared_drafts WHERE id = ? AND mutation = ?)").bind(crypto.randomUUID(), action.workspaceId, draft.id, user.userId, email(user), draft.version + 1, JSON.stringify({ candidateId: candidate.id, sourceId: candidate.sourceId, decision: action.decision, note: action.note }), now, draft.id, token),
+    ]);
+    if (!result[0].meta.changes) throw new ReviewError(409, "The draft changed. Refresh before verifying the visual lead.");
+    return { draftId: draft.id, version: draft.version + 1, state: draft.state };
+  }
   let nextState = draft.state;
   let title = draft.title;
   let body = draft.body;
@@ -216,7 +237,8 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     }
     findings = JSON.stringify(checked); policyVersion = policy.version;
     const live = !result.isSimulated && !result.error;
-    reviewMeta = JSON.stringify({ mode: live ? "hybrid" : "rules-fallback", model: result.model || null, completedAt: new Date().toISOString(), notice: live ? "Live AI and rule findings saved. Priority uses source-linked findings; human review is required." : "AI was unavailable; rule findings were saved. You can retry the AI review.", assessment: live ? groundedAssessment(checked, draft.body) : null, observedText: draft.review_meta ? JSON.parse(draft.review_meta).observedText || "" : "" });
+    const previousMeta = draft.review_meta && draft.policy_version === policy.version ? JSON.parse(draft.review_meta) : null;
+    reviewMeta = JSON.stringify({ mode: live ? "hybrid" : "rules-fallback", model: result.model || null, completedAt: new Date().toISOString(), notice: live ? "Live AI and rule findings saved. Priority uses source-linked findings; human review is required." : "AI was unavailable; rule findings were saved. You can retry the AI review.", assessment: live ? groundedAssessment(checked, draft.body) : null, observedText: previousMeta?.observedText || "", visualCandidates: previousMeta?.visualCandidates || [], visualResolutions: previousMeta?.visualResolutions || [] });
     if (["approved", "submitted"].includes(draft.state)) nextState = "needs_review";
     detail = { policyVersion, findings: checked, review: JSON.parse(reviewMeta), consent: true, externalService: "Google Gemini", sources: policy.pack.sources, snapshot: { ...contentSnapshot(draft), document: doc, image } };
   } else if (action.action === "reviewVisual") {
@@ -226,9 +248,8 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     await membership(db, user, action.workspaceId);
     const checked = checkContent(policy.pack, draft.title, draft.body, doc, image);
     if (draft.policy_version === policy.version) for (const previous of JSON.parse(draft.findings) as Finding[]) if (previous.id.startsWith("ai:")) checked.push(previous);
-    checked.push(...result.findings);
     findings = JSON.stringify(checked); policyVersion = policy.version;
-    reviewMeta = JSON.stringify({ mode: "visual", model: result.model, completedAt: new Date().toISOString(), notice: "AI inspected a reduced-size image preview. Visual observations are suggestions linked to approved sources and require human verification.", assessment: groundedAssessment(checked, draft.body), observedText: result.observedText });
+    reviewMeta = JSON.stringify({ mode: "visual", model: result.model, completedAt: new Date().toISOString(), notice: "AI inspected a reduced-size image preview. Its visual leads are not findings until a separate reviewer verifies them against the original image.", assessment: groundedAssessment(checked, draft.body), observedText: result.observedText, visualCandidates: result.findings, visualResolutions: [] });
     if (["approved", "submitted"].includes(draft.state)) nextState = "needs_review";
     detail = { policyVersion, findings: checked, review: JSON.parse(reviewMeta), consent: true, externalService: "Google Gemini", imagePreviewSent: true, originalImageSent: false, sources: policy.pack.sources, snapshot: { ...contentSnapshot(draft), document: doc, image } };
   } else if (action.action === "recheckDraft") {
@@ -243,7 +264,7 @@ export async function mutateWorkspace(db: D1Database, user: Identity, input: unk
     if (draft.state !== "submitted") throw new ReviewError(409, "Only a submitted revision can receive a decision.");
     if (draft.policy_version !== policy.version) throw new ReviewError(409, "The policy changed. The creator must save and resubmit this draft.");
     nextState = action.decision;
-    detail = { note: action.note, reviewedVersion: draft.version, policyVersion: policy.version, acceptedFindingIds: action.decision === "approved" ? (JSON.parse(draft.findings) as { id: string }[]).map(f => f.id) : [], snapshot: contentSnapshot(draft) };
+    detail = { note: action.note, reviewedVersion: draft.version, policyVersion: policy.version, acceptedFindingIds: action.decision === "approved" ? (JSON.parse(draft.findings) as { id: string }[]).map(f => f.id) : [], visualResolutions: draft.review_meta ? JSON.parse(draft.review_meta).visualResolutions || [] : [], snapshot: contentSnapshot(draft) };
   } else {
     if (member.role === "reviewer" || draft.author_id !== user.userId) throw new ReviewError(403, "Only the original creator can edit or submit this draft.");
     if (action.action === "submit") {
