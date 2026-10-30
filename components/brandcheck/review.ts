@@ -110,7 +110,7 @@ export function reviewDraft(
             explanation:
               "This sounds like a measurable performance claim. The approved pack does not contain evidence for it. BrandCheck has not determined whether it is true or false.",
             suggestion:
-              "Link current approved evidence for reviewer assessment, or use the approved non-quantified description: “designed to simplify daily work.”",
+              "Link current approved evidence for reviewer assessment, or remove the unsupported measurement and describe only an approved benefit.",
           }),
         );
     }

@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { z } from "zod";
 import { runGroundedGeminiReview } from "../../../components/brandcheck/aiReview";
+import { reserveAIRequest } from "../../../lib/ai-quota";
 
 const sourceSchema = z.object({
   id: z.string().min(1).max(80), title: z.string().max(200),
@@ -54,21 +55,7 @@ async function readJson(request: Request) {
   return JSON.parse(new TextDecoder().decode(data));
 }
 async function reserveReview(request: Request): Promise<boolean> {
-  if (!env.DB) return false;
-  const db = env.DB;
-  const now = Date.now();
-  const day = new Date(now).toISOString().slice(0, 10);
-  const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anonymous";
-  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${day}:${ip}`));
-  const fingerprint = Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, "0")).join("");
-  const expires = Math.floor(now / 1000) + 2 * 24 * 60 * 60;
-  const statement = "INSERT INTO review_usage (bucket, count, expires_at) VALUES (?, 1, ?) ON CONFLICT(bucket) DO UPDATE SET count = count + 1 WHERE count < ? RETURNING count";
-  const results = await db.batch([
-    db.prepare(statement).bind(`day:${day}`, expires, 60),
-    db.prepare(statement).bind(`visitor:${fingerprint}:${Math.floor(now / 600_000)}`, expires, 12),
-    db.prepare("DELETE FROM review_usage WHERE expires_at < ?").bind(Math.floor(now / 1000)),
-  ]);
-  return results[0].results.length > 0 && results[1].results.length > 0;
+  return reserveAIRequest(env.DB, request);
 }
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");

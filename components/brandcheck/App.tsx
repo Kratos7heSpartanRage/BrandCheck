@@ -72,12 +72,19 @@ function sourceLabel(finding: Finding) {
   return `${finding.sourceId} · v${finding.sourceVersion}`;
 }
 
-export default function App() {
+export default function App({ autoStart = false }: { autoStart?: boolean } = {}) {
   const [state, setState] = useState<AppState>(makeInitialState);
   const [hydrated, setHydrated] = useState(false);
   const latestStateRef = useRef(state);
   latestStateRef.current = state;
-  useEffect(() => { setState(loadState()); setHydrated(true); }, []);
+  useEffect(() => {
+    const stored = loadState();
+    if (autoStart && !stored.started) {
+      stored.started = true;
+      stored.versions = [{ id: 1, at: time(), by: "creator", body: structuredClone(stored.body), findings: [], dismissals: [], note: "Original sample draft" }];
+    }
+    setState(stored); setHydrated(true);
+  }, [autoStart]);
   const [toast, setToast] = useState("");
   const [dismissInputs, setDismissInputs] = useState<Record<string, string>>(
     {},

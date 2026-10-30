@@ -1,59 +1,80 @@
-# BrandCheck — hosted judge demo
+# BrandCheck
 
-This project hosts BrandCheck and its Gemini review endpoint together. Judges can open the app, review the fictional NovaDesk sample, revise content and record a human approval without signing in or supplying a key.
+BrandCheck connects approved brand guidelines, content review and human approvals in a saved workspace.
 
-The React review interface is adapted from Manas-Jain-24/brandcheck, commit 9832996. The hosted version adds a server route, private runtime secrets, validated inputs/outputs, durable usage limits and isolation of asynchronous review results.
+Product: https://brandcheck-codestar-judge.freelynx19.chatgpt.site  
+Deployed source branch: https://github.com/Manas-Jain-24/brandcheck/tree/judge-hosted
 
-## Architecture
+## Main product flow
 
-Browser → POST /api/review → private runtime GEMINI_API_KEY → Google Gemini.
+1. Sign in and create a workspace. New workspaces start with generic claim/tone guidance and no fictional brand facts. NovaDesk example data is an explicit opt-in.
+2. Use Brand guidelines to define positioning, tone, retired/preferred names and evidence. Changes become proposals; an admin approves or rejects them.
+3. Write content or import PDF/DOCX/TXT/Markdown directly into the content editor. Save text plus its page/paragraph location map. Original files remain on the device.
+4. Run rules or consent to live Google Gemini review. Findings, source references, model identity, assessment and fallback status are saved with the revision. Corrections remain optional and need a new saved review.
+5. Submit the saved revision. A separate reviewer comments, requests changes or approves with a reason. Self-review is denied on the server. Revising approved content invalidates its approval.
+6. Approved policy changes recheck stored content and mark affected decisions/submissions for review. Original proposal differences and old/new policy packs remain in history.
 
-The server filters retired sources and expired evidence, bounds request size, validates the returned assessment and limits shared demo usage. AI findings must quote content present in the input and cite an active source. This is structural grounding, not proof that the source supports every interpretation. The public review desk retains browser-session drafts. A separate `/workspace` screen adds platform sign-in, D1-backed shared drafts, explicit email membership, server-enforced admin/creator/reviewer roles and server-recorded audit events. Submitting freezes a revision and saves rule findings and the current workspace policy. The API rejects self-review, cross-workspace access and stale updates. Editing an approved draft returns it to draft status while retaining the original decision.
+The workspace has Content, Brand guidelines, People & access, and Activity navigation. Admins can grant and remove creator/reviewer access. Sign-in establishes identity; it never grants access to another workspace by itself.
 
-## Product journeys
+## Public exploration
 
-- `/`: public text/image review, live Gemini with rule fallback, source explanations, optional corrections and clearly simulated reviewer decisions. No key or sign-in required.
-- `/documents`: local PDF/DOCX/TXT/Markdown extraction, editable page/paragraph text, source-linked rule findings with location links, contrast checks and text handoff to a shared workspace. The two-page example is explicitly synthetic. Actual PDF/DOCX import is supported.
-- `/policy-lab`: a clearly labelled device-local policy regression sandbox for anonymous judges. Propose a rename, inspect differences, activate it and see which sample draft requires re-review.
-- `/workspace`: real authenticated shared drafts, comments, review decisions, custom JSON brand policies, admin-approved updates, bounded workspace-wide rechecks and stored history. GitHub raw policy import is a real read-only, on-demand connector. It creates a proposal; it does not automatically activate an external policy.
+- `/`: product entry. Signed-in visitors go directly to `/workspace`.
+- `/workspace`: real authenticated, persistent collaboration.
+- `/example`: a working fictional NovaDesk example without sign-in or a visitor-supplied API key. Its creator/reviewer selector is explicitly local simulation. It is separate from real workspace permissions.
+- `/documents`: browser-local document review against example guidelines, with text/location-map handoff to a saved workspace.
+- `/policy-lab`: clearly labelled device-local policy-change example. Real saved policies and permissions live in `/workspace`.
 
-## Shared-review integration contract
+## Architecture and data
 
-`GET /api/workspaces` returns the authenticated user and accessible workspaces. `GET /api/workspaces?workspaceId=<id>` returns the role, drafts, members and latest events. Anonymous callers receive 401; inaccessible workspaces return 404.
+React/TypeScript and the Sites Vinext/Vite starter run on Cloudflare Workers. D1 stores workspace membership, drafts, document location maps, findings, review metadata, policy proposals/versions and audit events. Zod validates requests and AI output. Drizzle owns additive schema migrations. No runtime request creates database tables.
 
-`POST /api/workspaces` accepts JSON actions: `createWorkspace`, `invite`, `createDraft`, `saveDraft`, `submit`, `recheckDraft`, `comment`, `decide`, `proposePolicy`, `syncPolicy`, or `decidePolicy`. Existing-draft actions require `workspaceId`, `draftId` and current `version`; create/save requires `title` and `body`. Decisions require `decision: approved|changes_requested` and a nonempty `note`. Policy proposals carry the pack; sync carries a public `https://raw.githubusercontent.com/...` URL; a policy decision carries `proposalId`, `accept` and `note`. See `lib/shared-review.ts` for the Zod contract. Writes require same-origin Origin. Identity comes from the platform's server context, never submitted JSON. Grant access to a teammate's exact sign-in email, then share the /workspace link; no invitation email is sent.
+Browser → same-origin workspace API → private runtime key → Google Gemini. Shared AI reads the authoritative saved draft and approved workspace policy on the server. It checks membership, content revision and policy again before committing results. Late results cannot overwrite newer content/policies; revoked members cannot save a completed long-running review. State mutations and their events are batched transactions. Policy rechecks use a bounded five-statement transaction with JSON1 and per-draft revision guards.
 
-State mutations and audit events commit atomically in D1 batch transactions. Compare-and-swap version checks and a unique mutation token prevent false events from conflicting writes. Audit events have no edit/delete API; database administrators remain trusted. This is not a cryptographically signed or administrator-proof ledger.
+PDF.js (Apache-2.0), Mammoth (BSD-2-Clause) and fflate (MIT) provide parsing and ZIP inspection. The upstream PDF worker is copied to a generated static asset before dev/build with its license notice retained. Shared document findings retain page/paragraph locations after reload and policy rechecks. Editing individual sections rebuilds offsets; switching to plain text explicitly discards the map.
 
-Policy activation and all matched draft rechecks use one five-statement transaction with JSON1 and per-draft revision guards. A concurrently edited draft is skipped rather than overwritten; its policy mismatch is visible and an explicit recheck recovers it. A stale policy proposal cannot overwrite a newer version. Regression output is limited to 700 KB per activation. The database retains old/new policy payloads in audit history.
+AI findings must quote content present in the input and cite an active source. This structural validation does not prove the model's interpretation is correct. Scores and rewrites are advisory. Failed AI analysis saves labelled rule-only results with no simulated assessment. Editing content or changing policy clears stale AI metadata. Submission preserves a matching live assessment; it does not silently replace it with a rule-only review.
 
-Shared tables store member emails, actor identity, draft text, revision snapshots and comments. Every workspace member can read its contents. Use synthetic content for evaluation. Queue and displayed history are bounded to 100 drafts and the latest 200 events. Document originals are not uploaded or stored. Only an explicit handoff sends extracted text to shared storage, subject to the 5,000-character shared editor limit.
+Audit events have no edit/delete API, but database administrators are trusted. This is not a signed, administrator-proof ledger or evidence of SOC2 certification.
 
-Run `node scripts/test-shared-review.mjs` on Node 22.13+ for SQLite-backed tests of the actual service and migrations. The current suite has 24 cases covering permissions, concurrent writes, policy rejection/activation/rollback, rechecks, actual DOCX extraction, contrast, AI excerpt/citation validation and connector redirect safety. `node scripts/create-document-fixtures.mjs` generates a real two-page test PDF in ignored `work/`. Local browser QA covered actual PDF and DOCX extraction, page-2 findings, extracted-text handoff, policy proposal/activation, changed draft status and a real GitHub file fetched into a pending policy proposal. Production browser checks covered actual PDF extraction and page-linked findings plus the anonymous policy regression flow. Local preview uses the starter's development identity facility; two real hosted accounts must still verify production sign-in and shared decisions.
+## Policy connector
 
-## Runtime configuration
+A read-only, on-demand connector fetches public JSON from `https://raw.githubusercontent.com/...`. It requires an authenticated admin, bounds the response size, rejects redirects and validates the pack. Import creates a proposal; it never activates an external change automatically. An example file is in `examples/brand-policy.json`.
 
-Configure GEMINI_API_KEY as a secret in Sites settings. GEMINI_MODEL defaults to gemini-3.1-flash-lite. Never put a key in client code, a VITE_ variable, Git, or hosting.json.
+The normal brand editor does not require JSON. Advanced JSON import remains available. There are no Notion, Confluence, Google Docs, Webflow or private-repository connectors and no background sync or memo-to-rule extraction.
 
-The source hosting manifest declares the DB binding. Sites applies the checked-in D1 migration before deployment. The live endpoint is limited to 60 requests per UTC day across the demo and 12 requests per visitor IP bucket per 10 minutes. Old buckets expire after two days. Raw addresses and draft text are not stored by the endpoint.
+## API contract
 
-## Run and build
+`GET /api/workspaces`: authenticated identity and accessible workspaces.  
+`GET /api/workspaces?workspaceId=<id>`: role, drafts, members, policies, proposals and latest events.  
+`POST /api/workspaces`: validated JSON actions `createWorkspace`, `invite`, `removeMember`, `createDraft`, `saveDraft`, `reviewAI`, `recheckDraft`, `submit`, `comment`, `decide`, `proposePolicy`, `syncPolicy`, `decidePolicy`.
 
-Use Node.js 22+ and pnpm 11.25.0. Install with the Sites installation helper, then run pnpm dev. Build with the Sites build helper so Worker metadata is generated correctly. pnpm exec tsc --noEmit checks application types. pnpm run db:generate creates an additive migration when schema changes.
+Draft mutations require the current revision. `reviewAI` requires explicit `consent: true`; it sends only the saved draft and approved pack, never caller-supplied alternate brand rules. Imported content may include a validated `document` map of ordered labelled ranges covering the text. Identity is supplied by Sites server context, never submitted JSON. Writes require the exact same-origin Origin. Anonymous calls return 401; inaccessible workspaces return 404; unauthorized actions return 403; stale mutations return 409. The body stream is limited to 96 KB.
 
-The app uses the Sites Vinext starter, Vite, React, TypeScript, Cloudflare Workers/D1, Zod, Drizzle and Google Gemini. PDF.js (Apache-2.0), Mammoth (BSD-2-Clause) and fflate (MIT) provide document parsing and ZIP inspection. The upstream PDF worker is copied from the installed package into a generated public asset before dev/build, retaining its licence notice. The hosting starter is reused infrastructure; the brand-governance workflow is project code. AI coding assistance was used for implementation and debugging.
+Membership invitations grant the exact email access; no invitation email is sent. Share the workspace URL separately. The workspace owner's membership cannot be removed through the member-removal action. Removed members lose access; previous authored content and recorded history remain intact.
 
-## Privacy and limitations
+## Configuration and verification
 
-Hybrid mode sends draft text, image metadata, approved guidelines and evidence references through the server to Google Gemini. Image pixels are not sent. The API key remains a runtime secret. Local rule checks can be used without an AI request. AI findings and scores can be wrong and require human review. Model availability and demo quotas may temporarily limit live review.
+Use Node 22.13+ and pnpm 11.25.0. Configure `GEMINI_API_KEY` and optional `GEMINI_MODEL` only as private runtime secrets. Current default model: `gemini-3.1-flash-lite`. Never put secrets in browser code, Git, a `VITE_` value or `.openai/hosting.json`.
 
-## Known limitations and scope changes
+- `pnpm dev`: local preview with the starter's development sign-in facility.
+- `pnpm exec tsc --noEmit`: strict type checking.
+- `pnpm run db:generate`: additive migration generation; inspect generated SQL/metadata.
+- `node scripts/test-shared-review.mjs`: 35 SQLite-backed service/transport/document tests using actual migrations.
+- `node scripts/create-document-fixtures.mjs`: real two-page PDF fixture in ignored `work/`.
+- Build and publish through the Sites skill helpers to retain Worker metadata and apply production migrations.
 
-- Shared workspaces currently use deterministic rule checks; live AI is in the public review desk. Shared document handoff saves extracted text and does not retain page mappings on the server.
-- PDF support is text-based, up to 20 pages/5 MB/40,000 extracted characters. DOCX locations are extracted paragraphs, not original Word page/line coordinates. No OCR, pixel-coordinate overlays, presentation-deck or Figma parsing. Unsupported/encrypted/empty documents show an error. The document screen displays at most 200 findings with an explicit truncation notice.
-- Visual functionality is exact asset hashing/alt-text checks in the public review desk and explicit foreground/background contrast measurement in Documents. No vision classifier, logo clearance or automatic palette inspection is claimed.
-- The promised policy-platform connector scope was narrowed to public GitHub JSON, because the team already uses GitHub. No Notion, Confluence, Google Docs or Webflow integrations; no private-repository authentication, background sync or external published-content crawler.
-- Policy JSON is explicitly structured. Free-text policy memos are not automatically converted into reliable rules. Claim/tone heuristics use known policy identifiers from the example schema; adding arbitrary prose does not create a new automatic detector.
-- Audit events are application-append-only with trusted database administration, not a cryptographically signed ledger or evidence of SOC2 certification. No Slack/Teams/email notifications, member removal, retention/export/deletion administration or enterprise security certification.
-- Policy freshness is checked on activation, submission or explicit recheck; there is no scheduled expiry sweep. Source correctness, user-entered evidence and claim truth are not independently verified.
-- The original anonymous review desk and policy sandbox have clearly labelled local state/persona simulation; shared workspaces require real sign-in. The application is an MVP with documented limits, not a guarantee of legal or brand compliance.
+Tests cover organization isolation, roles, self-review, revocation, stale/concurrent writes, transaction rollback, policy proposals/regression, document mapping, real DOCX extraction, AI consent/fallback/provenance and stale AI results. Browser QA should exercise the full new-brand → imported document → saved review → approval journey; distinguish local, hosted and two-account results in release notes.
+
+## Privacy and current limits
+
+Hybrid review sends saved draft text and approved policy/evidence to Google through the server. A user must explicitly consent before each selected draft's AI review. No image pixels or original document binaries are sent by the workspace. All workspace members can read its content; the platform supplies authentication. There is no enterprise security certification or independent external claim fact-checking.
+
+The hosted service currently shares an AI allowance of 60 requests per UTC day and 12 per visitor-IP bucket per 10 minutes. D1 counters store rotating hashes, not raw IP addresses. Rule checks remain available when AI fails or reaches its allowance. These are operating limits, not a paid plan or unlimited service promise.
+
+Workspace drafts support 5,000 characters, up to 100 drafts per workspace and the latest 200 displayed activity events. The document tool supports files up to 5 MB, 20 text-based PDF pages, 200 DOCX paragraphs and 40,000 extracted characters; it displays at most 200 findings with a notice. Longer documents can be locally reviewed but must be shortened before saved-workspace handoff. No scanned-document OCR, pixel-coordinate highlights, original Word page/line fidelity, presentation or Figma import is implemented.
+
+Visual checks are limited to the example desk's asset hashes/alt text and the document tool's explicit text-contrast calculation. No vision classifier, logo clearance or automatic palette inspection. There are no email/Slack/Teams notifications, scheduled expiry sweeps, billing, retention/deletion administration or general history pagination. The project is a functional hackathon product with explicit limits, not a promise of legal/brand compliance or audited enterprise readiness.
+
+## Reuse and assistance
+
+The original review interface was adapted from Manas-Jain-24/brandcheck, commit `9832996`. The Sites Vinext starter is reused hosting infrastructure. React, Vite, TypeScript, Cloudflare, Drizzle, Zod, Gemini and the document libraries above are external components/services. Significant AI coding assistance was used for implementation, testing and debugging. Individual contribution statements must describe work each participant actually performed.

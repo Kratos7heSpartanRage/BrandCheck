@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { ZodError } from "zod";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { listWorkspaces, readWorkspace, mutateWorkspace, ReviewError } from "../../../lib/shared-review";
+import { runSavedAIReview } from "../../../lib/ai-server";
 
 export const dynamic = "force-dynamic";
 function json(data: unknown, status = 200) { return Response.json(data, { status, headers: { "Cache-Control": "no-store", "Vary": "Cookie" } }); }
@@ -22,10 +23,10 @@ async function handle(request: Request, write: boolean) {
     const reader = request.body?.getReader();
     if (!reader) return json({ error: "Missing request body." }, 400);
     const chunks: Uint8Array[] = []; let bytes = 0;
-    while (true) { const next = await reader.read(); if (next.done) break; bytes += next.value.byteLength; if (bytes > 32_000) { await reader.cancel(); return json({ error: "Request exceeds 32 KB." }, 413); } chunks.push(next.value); }
+    while (true) { const next = await reader.read(); if (next.done) break; bytes += next.value.byteLength; if (bytes > 96_000) { await reader.cancel(); return json({ error: "Request exceeds 96 KB." }, 413); } chunks.push(next.value); }
     const data = new Uint8Array(bytes); let offset = 0;
     for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
-    return json(await mutateWorkspace(env.DB, user, JSON.parse(new TextDecoder().decode(data))));
+    return json(await mutateWorkspace(env.DB, user, JSON.parse(new TextDecoder().decode(data)), { aiReview: (title, text, pack) => runSavedAIReview(request, title, text, pack) }));
   } catch (error) {
     if (error instanceof ReviewError) return json({ error: error.message }, error.status);
     if (error instanceof ZodError || error instanceof SyntaxError) return json({ error: "Check the request fields and limits." }, 400);

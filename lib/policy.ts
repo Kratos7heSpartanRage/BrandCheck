@@ -20,6 +20,13 @@ export const policySchema = z.object({
 });
 export type Policy = z.infer<typeof policySchema>;
 export const defaultPolicy: Policy = { name: "NovaDesk demonstration pack", sources: seedSources, terms: seedTerms, evidence: [] };
+export function starterPolicy(name: string): Policy {
+  return { name: `${name.slice(0, 70)} brand guidelines`, sources: [
+    { id: "TERM-001", title: "Approved terminology", body: "Use the approved names and terminology defined by this workspace's brand owner.", version: "1", updated: new Date().toISOString().slice(0,10), status: "Approved", kind: "Terminology" },
+    { id: "CLAIM-001", title: "Claim substantiation", body: "Measurable performance and outcome claims require current approved evidence. An unsupported claim requires human assessment; it is not automatically false.", version: "1", updated: new Date().toISOString().slice(0,10), status: "Approved", kind: "Claim policy" },
+    { id: "TONE-001", title: "Voice and tone", body: "Be clear, calm and specific. Avoid absolute promises unless an authorised reviewer can substantiate them.", version: "1", updated: new Date().toISOString().slice(0,10), status: "Approved", kind: "Messaging" },
+  ], terms: [], evidence: [] };
+}
 export function checkPolicy(policy: Policy, title: string, body: string): Finding[] {
   return reviewDraft({ title, text: body, channel: "Shared draft", audience: "General", image: null }, policy.sources, policy.terms, policy.evidence);
 }

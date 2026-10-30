@@ -3,7 +3,7 @@ import "../components/brandcheck/styles.css";
 
 export const metadata: Metadata = {
   title: "BrandCheck — Review with context",
-  description: "Review content against approved brand sources and ask a human reviewer to decide. No account or API key required for this demo.",
+  description: "Manage approved brand guidelines, review content and collaborate on versioned human approvals in BrandCheck.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

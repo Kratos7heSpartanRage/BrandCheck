@@ -10,9 +10,9 @@ import ts from "typescript";
 
 const directory = resolve("work/shared-tests");
 await mkdir(directory, { recursive: true });
-for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["lib/policy.ts", "policy"], ["lib/documents.ts", "documents"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
+for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["lib/content.ts", "content"], ["lib/policy.ts", "policy"], ["lib/documents.ts", "documents"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
   let compiled = ts.transpileModule(await readFile(source, "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\/)(review|model|aiReview|policy)"/g, '"./$1.mjs"');
+  compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\/)(review|model|aiReview|policy|content)"/g, '"./$1.mjs"');
   await writeFile(resolve(directory, `${name}.mjs`), compiled);
 }
 const { mutateWorkspace: mutate, readWorkspace: read, listWorkspaces: list } = await import(pathToFileURL(resolve(directory, "shared-review.mjs")).href);
@@ -41,7 +41,7 @@ async function fixture() {
   // readWorkspace batch returns rows rather than write metadata.
   const writeBatch = db.batch;
   db.batch = async statements => statements.every(s => s.query.startsWith("SELECT")) ? Promise.all(statements.map(s => s.all())) : writeBatch(statements);
-  const { workspaceId } = await mutate(db, owner, { action: "createWorkspace", name: "Test workspace" });
+  const { workspaceId } = await mutate(db, owner, { action: "createWorkspace", name: "Test workspace", useExamplePack: true });
   await mutate(db, owner, { action: "invite", workspaceId, email: creator.email, role: "creator" });
   await mutate(db, owner, { action: "invite", workspaceId, email: reviewer.email, role: "reviewer" });
   const { draftId } = await mutate(db, creator, { action: "createDraft", workspaceId, title: "Launch", body: "Our draft" });
@@ -249,4 +249,103 @@ test("GitHub connector uses edge-compatible manual redirects and never follows a
     globalThis.fetch = async (_url, options) => { assert.equal(options.redirect, "manual"); return Response.json(defaultPolicy); };
     assert.equal((await fetchGitHubPolicy("https://raw.githubusercontent.com/owner/repo/main/policy.json")).name, defaultPolicy.name);
   } finally { globalThis.fetch = originalFetch; }
+});
+test("a real workspace starts with generic guidelines and no fictional facts", async () => {
+  const { db } = await fixture();
+  const { workspaceId } = await mutate(db, owner, { action: "createWorkspace", name: "Atlas team" });
+  const value = await read(db, owner, workspaceId);
+  assert.equal(value.policy.pack.terms.length, 0);
+  assert.ok(!JSON.stringify(value.policy.pack).includes("NovaDesk"));
+  assert.ok(value.policy.pack.name.includes("Atlas"));
+});
+test("document locations survive save, submit and later policy rechecks", async () => {
+  const { db, workspaceId } = await fixture();
+  const document = { name: "launch.pdf", type: "pdf", segments: [{ label: "Page 1", start: 0, end: 5 }, { label: "Page 2", start: 7, end: 13 }] };
+  const { draftId } = await mutate(db, creator, { action: "createDraft", workspaceId, title: "PDF", body: "Hello\n\nFlowly", document });
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 1 });
+  let value = await read(db, reviewer, workspaceId);
+  let draft = value.drafts.find(d => d.id === draftId);
+  assert.equal(JSON.parse(draft.findings)[0].location, "Page 2");
+  assert.deepEqual(JSON.parse(draft.document), document);
+  const proposal = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: renamePolicy() });
+  await mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: proposal.proposalId, accept: true, note: "Rename" });
+  value = await read(db, reviewer, workspaceId); draft = value.drafts.find(d => d.id === draftId);
+  assert.equal(JSON.parse(draft.findings)[0].location, "Page 2");
+});
+test("invalid document ranges cannot hide unreviewed text", async () => {
+  const { db, workspaceId } = await fixture();
+  await assert.rejects(mutate(db, creator, { action: "createDraft", workspaceId, title: "Forged", body: "Flowly remains hidden", document: { name: "fake.pdf", type: "pdf", segments: [{ label: "Page 1", start: 10, end: 20 }] } }), denied(400));
+});
+test("shared AI results are saved, survive submission and clear when content changes", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  const services = { aiReview: async () => ({ findings: [], assessment: { riskLevel: "Low", score: 80, summary: "Human review needed", claimRiskNote: "", toneRiskNote: "", suggestedRewrite: "A revised draft" }, isSimulated: false, model: "test-model" }) };
+  await mutate(db, creator, { action: "reviewAI", workspaceId, draftId, version: 1, consent: true }, services);
+  assert.equal(JSON.parse((await read(db, reviewer, workspaceId)).drafts[0].review_meta).mode, "hybrid");
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 2 });
+  assert.equal(JSON.parse((await read(db, reviewer, workspaceId)).drafts[0].review_meta).model, "test-model");
+  await mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 3, decision: "changes_requested", note: "Please update" });
+  await mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: 4, title: "Changed", body: "Changed text" });
+  assert.equal((await read(db, reviewer, workspaceId)).drafts[0].review_meta, null);
+});
+test("AI failure stores clearly labelled rules with no simulated assessment", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  const services = { aiReview: async () => ({ findings: [{ id: "fake", category: "Claims" }], assessment: { score: 99 }, isSimulated: true, error: "Unavailable" }) };
+  await mutate(db, creator, { action: "reviewAI", workspaceId, draftId, version: 1, consent: true }, services);
+  const draft = (await read(db, reviewer, workspaceId)).drafts[0];
+  assert.equal(JSON.parse(draft.review_meta).mode, "rules-fallback");
+  assert.equal(JSON.parse(draft.review_meta).assessment, null);
+  assert.ok(!JSON.parse(draft.findings).some(f => f.id === "fake"));
+});
+test("AI review requires consent and rechecks membership and revision before saving", async () => {
+  const { db, workspaceId, draftId, sql } = await fixture();
+  let calls = 0;
+  const services = { aiReview: async () => { calls++; return { findings: [], assessment: null, isSimulated: false }; } };
+  await assert.rejects(mutate(db, creator, { action: "reviewAI", workspaceId, draftId, version: 1, consent: false }, services));
+  assert.equal(calls, 0);
+  const changed = { aiReview: async () => { await mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: 1, title: "New", body: "New content" }); return { findings: [], assessment: null, isSimulated: false }; } };
+  await assert.rejects(mutate(db, creator, { action: "reviewAI", workspaceId, draftId, version: 1, consent: true }, changed), denied(409));
+  assert.equal(sql.prepare("SELECT COUNT(*) n FROM audit_events WHERE action = 'reviewAI'").get().n, 0);
+});
+test("removing a teammate immediately denies future reads and writes", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  await assert.rejects(mutate(db, creator, { action: "removeMember", workspaceId, email: reviewer.email, note: "Not authorised" }), denied(403));
+  await assert.rejects(mutate(db, owner, { action: "removeMember", workspaceId, email: owner.email, note: "Cannot remove owner" }), denied(403));
+  await mutate(db, owner, { action: "removeMember", workspaceId, email: reviewer.email, note: "Access ended" });
+  await assert.rejects(read(db, reviewer, workspaceId), denied(404));
+  await assert.rejects(mutate(db, reviewer, { action: "comment", workspaceId, draftId, version: 1, note: "No access" }), denied(404));
+});
+test("accepted proposal keeps its original difference after active policy changes", async () => {
+  const { db, workspaceId } = await fixture();
+  const proposal = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: renamePolicy() });
+  await mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: proposal.proposalId, accept: true, note: "Approved" });
+  const value = await read(db, owner, workspaceId);
+  assert.ok(value.proposals[0].diff.terms.added.includes("rename-nova"));
+  assert.equal(value.proposals[0].comparison, "Original proposal comparison");
+});
+test("creator can resubmit unchanged content for a new human decision after a recheck", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 1 });
+  await mutate(db, reviewer, { action: "recheckDraft", workspaceId, draftId, version: 2 });
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 3 });
+  assert.equal((await read(db, reviewer, workspaceId)).drafts[0].state, "submitted");
+});
+test("policy changes during AI analysis reject stale results", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  const services = { aiReview: async () => {
+    const proposal = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: renamePolicy() });
+    await mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: proposal.proposalId, accept: true, note: "Changed during review" });
+    return { findings: [], assessment: null, isSimulated: false };
+  } };
+  await assert.rejects(mutate(db, creator, { action: "reviewAI", workspaceId, draftId, version: 1, consent: true }, services), denied(409));
+  const value = await read(db, reviewer, workspaceId);
+  assert.equal(value.policy.version, 1); assert.equal(value.drafts[0].review_meta, null);
+});
+test("membership revoked during AI analysis cannot save the result", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  const services = { aiReview: async () => {
+    await mutate(db, owner, { action: "removeMember", workspaceId, email: creator.email, note: "Access revoked during analysis" });
+    return { findings: [], assessment: null, isSimulated: false };
+  } };
+  await assert.rejects(mutate(db, creator, { action: "reviewAI", workspaceId, draftId, version: 1, consent: true }, services), denied(404));
+  assert.equal((await read(db, owner, workspaceId)).drafts[0].review_meta, null);
 });
