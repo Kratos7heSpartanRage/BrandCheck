@@ -8,7 +8,19 @@ The React review interface is adapted from Manas-Jain-24/brandcheck, commit 9832
 
 Browser → POST /api/review → private runtime GEMINI_API_KEY → Google Gemini.
 
-The server filters retired sources and expired evidence, bounds request size, validates the returned assessment and limits shared demo usage. The D1 database stores usage counters and rotating hashes only. Drafts, comments and approvals remain a browser-session demonstration; they are not shared accounts or server-enforced review roles.
+The server filters retired sources and expired evidence, bounds request size, validates the returned assessment and limits shared demo usage. The public review desk retains browser-session drafts. A separate `/workspace` screen adds platform sign-in, D1-backed shared drafts, explicit email membership, server-enforced admin/creator/reviewer roles and server-recorded audit events. Submitting freezes a revision and saves rule findings and approved NovaDesk demonstration sources. The API rejects self-review, cross-workspace access and stale updates. Editing an approved draft returns it to draft status while retaining the original decision.
+
+## Shared-review integration contract
+
+`GET /api/workspaces` returns the authenticated user and accessible workspaces. `GET /api/workspaces?workspaceId=<id>` returns the role, drafts, members and latest events. Anonymous callers receive 401; inaccessible workspaces return 404.
+
+`POST /api/workspaces` accepts JSON actions: `createWorkspace`, `invite`, `createDraft`, `saveDraft`, `submit`, `comment`, or `decide`. Existing-draft actions require `workspaceId`, `draftId` and current `version`; create/save requires `title` and `body`. Decisions require `decision: approved|changes_requested` and a nonempty `note`. See `lib/shared-review.ts` for the Zod contract. Writes require same-origin Origin. Identity comes from the platform's server context, never submitted JSON. Grant access to a teammate's exact sign-in email, then share the /workspace link; no invitation email is sent.
+
+State mutations and audit events commit atomically in D1 batch transactions. Compare-and-swap version checks and a unique mutation token prevent false events from conflicting writes. Audit events have no edit/delete API; database administrators remain trusted. This is not a cryptographically signed or administrator-proof ledger.
+
+Shared tables store member emails, actor identity, draft text, revision snapshots and comments. Every workspace member can read its contents. Use synthetic content for evaluation. This slice does not yet support custom policy packs, live AI in shared revisions, PDF/DOCX intake, policy sync, notifications, member removal, retention or deletion administration. Queue and history are currently bounded to 100 drafts and the latest 200 events. It is not an enterprise-ready confidential document service.
+
+Run `node scripts/test-shared-review.mjs` on Node 22.13+ for 11 SQLite-backed tests of the actual service and migrations. These cover roles, organization isolation, self-review, stale/concurrent writes, findings snapshots and transaction rollback. Local preview uses the starter's development identity facility; two real hosted accounts must still verify production sign-in and shared decisions.
 
 ## Runtime configuration
 
