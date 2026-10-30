@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import PolicyPanel from "../../components/PolicyPanel";
+import type { Proposal } from "../../components/PolicyPanel";
+import type { Policy } from "../../lib/policy";
 
 type Workspace = { id: string; name: string; role: string };
-type Draft = { id: string; title: string; body: string; version: number; state: string; author_id: string };
-type Data = { role: string; drafts: Draft[]; events: { id: string; actor_email: string; action: string; version: number | null; detail: string; created_at: string }[]; members: { email: string; role: string }[] };
+type Draft = { id: string; title: string; body: string; version: number; state: string; author_id: string; findings: string; policy_version: number };
+type Data = { role: string; policy: { version: number; pack: Policy }; proposals: Proposal[]; drafts: Draft[]; events: { id: string; draft_id: string | null; actor_email: string; action: string; version: number | null; detail: string; created_at: string }[]; members: { email: string; role: string }[] };
 async function api<T>(path: string, action?: unknown): Promise<T> {
   const response = await fetch(path, action ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) } : { cache: "no-store" });
   const value = await response.json() as { error?: string };
@@ -23,8 +26,7 @@ export default function SharedWorkspace() {
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
   const [ready, setReady] = useState(false);
   const selected = data?.drafts.find(d => d.id === draftId);
-  const lastSubmission = data?.events.find(e => e.action === "submit" && (e as { draft_id?: string }).draft_id === draftId);
-  const submission = lastSubmission ? JSON.parse(lastSubmission.detail) as { findings?: { id: string; excerpt: string; explanation: string; sourceId: string; sourceVersion: string; suggestion: string }[] } : null;
+  const submission = selected && selected.findings ? { findings: JSON.parse(selected.findings) as { id: string; location: string; excerpt: string; explanation: string; sourceId: string; sourceVersion: string; suggestion: string }[] } : null;
   async function loadList() {
     const result = await api<{ user: { userId: string; email: string }; workspaces: Workspace[] }>("/api/workspaces"); setUser(result.user); setWorkspaces(result.workspaces);
     return result.workspaces as Workspace[];
@@ -36,10 +38,10 @@ export default function SharedWorkspace() {
   async function run(action: Record<string, unknown>) {
     if (busy) return; setBusy(true); setMessage("");
     try {
-      const result = await api<{ workspaceId?: string; draftId?: string }>("/api/workspaces", { workspaceId, ...action });
+      const result = await api<{ workspaceId?: string; draftId?: string; rechecked?: number; skipped?: number }>("/api/workspaces", { workspaceId, ...action });
       if (result.workspaceId) { await loadList(); setWorkspaceId(result.workspaceId); }
       else { await load(workspaceId); if (result.draftId) setDraftId(result.draftId); }
-      setNote(""); setMessage("Saved to shared workspace.");
+      setNote(""); setMessage(result.rechecked !== undefined ? `Policy activated. Rechecked ${result.rechecked} drafts; ${result.skipped || 0} concurrent edits skipped. Inspect policy versions before approving.` : "Saved to shared workspace.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Request failed."); }
     finally { setBusy(false); }
   }
@@ -59,7 +61,7 @@ export default function SharedWorkspace() {
       .shared-workspace .notice{padding:12px;background:#fff2cd;border-radius:8px}.shared-workspace small{display:block;color:#52645e}
       @media(max-width:720px){.shared-grid{grid-template-columns:1fr}.shared-workspace{padding:16px}}
     `}</style>
-    <a href="/">← BrandCheck review demo</a>
+    <a href="/">← BrandCheck review demo</a> · <a href="/documents">Document review</a> · <a href="/policy-lab">Policy sandbox</a>
     <h1>Shared review workspace</h1>
     <p>Drafts and review decisions saved on the server, with separate authenticated creators and reviewers.</p>
     {message && <p className="notice" role="status">{message}</p>}
@@ -72,21 +74,24 @@ export default function SharedWorkspace() {
         {data.drafts.map(d => <button disabled={busy} className="draft-option" aria-pressed={draftId === d.id} key={d.id} onClick={() => select(d)}>{d.title}<small>{d.state.replaceAll("_", " ")} · revision {d.version}</small></button>)}
         {data.role !== "reviewer" && <button disabled={busy} onClick={() => { setDraftId(""); setTitle(""); setBody(""); }}>New draft</button>}
       </section><section><h2>{selected ? "Review revision" : "Create a draft"}</h2>
-        <p>Submitting runs server-side rule checks against the approved NovaDesk demonstration pack and saves findings with the revision. This workspace does not yet support custom policy packs or live AI review.</p>
+        <p>Submitting runs server-side rule checks against this workspace's active approved policy. Sources and findings are saved with the revision. Live AI remains available in the separate public review desk.</p>
         <label>Title<input maxLength={100} value={title} disabled={busy || (!!selected && (!canEdit || selected.state === "submitted"))} onChange={e => setTitle(e.target.value)} /></label>
         <label>Draft text<textarea rows={10} maxLength={5000} value={body} disabled={busy || (!!selected && (!canEdit || selected.state === "submitted"))} onChange={e => setBody(e.target.value)} /></label>
         <small>{body.length}/5,000 characters</small>
         {!selected && data.role !== "reviewer" && <button disabled={busy || !title.trim()} onClick={() => run({ action: "createDraft", title, body })}>Create shared draft</button>}
-        {selected && <><p>Status: <strong>{selected.state.replaceAll("_", " ")}</strong> · revision {selected.version}</p>
+        {selected && <><p>Status: <strong>{selected.state.replaceAll("_", " ")}</strong> · revision {selected.version} · checked policy {selected.policy_version}</p>{selected.policy_version !== data.policy.version && <p className="notice">Policy has changed. Save a new revision and submit it for a current review.</p>}
+          <button disabled={busy} onClick={() => run({ action: "recheckDraft", draftId, version: selected.version })}>Recheck current policy</button>
           {canEdit && selected.state !== "submitted" && <button disabled={busy || !title.trim()} onClick={() => run({ action: "saveDraft", draftId, version: selected.version, title, body })}>Save new revision</button>}
           {canEdit && selected.state === "draft" && <button disabled={busy || title !== selected.title || body !== selected.body || !body.trim()} onClick={() => run({ action: "submit", draftId, version: selected.version })}>Submit saved revision</button>}
           <label>Comment or decision reason<textarea rows={3} maxLength={2000} value={note} onChange={e => setNote(e.target.value)} /></label>
           <button disabled={busy || !note.trim()} onClick={() => run({ action: "comment", draftId, version: selected.version, note })}>Add comment</button>
-          {submission && <div><h3>Findings from latest submission</h3><small>Rule checks against the saved NovaDesk pack. An approval reason must explain any accepted issues.</small>{submission.findings?.length ? submission.findings.map(f => <article key={f.id}><strong>{f.excerpt}</strong><p>{f.explanation}</p><small>{f.sourceId} · v{f.sourceVersion}</small><p>Suggested action: {f.suggestion}</p></article>) : <p>No rule findings. This is not a guarantee that the content is compliant.</p>}</div>}
+          {submission && <div><h3>Latest stored rule findings</h3><small>Source-linked checks for policy {selected.policy_version}. Draft edits clear prior findings; submit the saved text to check it again. An approval reason must explain any accepted issues.</small>{submission.findings?.length ? submission.findings.map(f => <article key={f.id}><strong>{f.excerpt}</strong><small>{f.location}</small><p>{f.explanation}</p><small>{f.sourceId} · v{f.sourceVersion}</small><p>Suggested action: {f.suggestion}</p></article>) : <p>No stored rule findings. This is not a guarantee that the content is compliant.</p>}</div>}
           {canDecide && <><button disabled={busy || !note.trim()} onClick={() => run({ action: "decide", draftId, version: selected.version, decision: "changes_requested", note })}>Request changes</button><button disabled={busy || !note.trim()} onClick={() => run({ action: "decide", draftId, version: selected.version, decision: "approved", note })}>Approve revision</button></>}
           {selected.author_id === user.userId && <small>A separate reviewer must decide on your submission.</small>}
         </>}
       </section></div>
+      <PolicyPanel key={`${workspaceId}:${data.policy.version}`} current={data.policy} proposals={data.proposals} admin={data.role === "admin"} busy={busy} run={run} />
+      <section><h2>Policy impact and recurring issues</h2><p>Current stored checks across this workspace. Recheck stale drafts before relying on these counts.</p>{data.drafts.length ? <ul>{data.drafts.map(d => <li key={d.id}>{d.title}: {JSON.parse(d.findings).length} findings · {d.state.replaceAll("_", " ")} · policy {d.policy_version}{d.policy_version !== data.policy.version ? " (outdated — recheck)" : ""}</li>)}</ul> : <p>No drafts yet.</p>}<details><summary>Issue categories across stored drafts</summary><pre>{JSON.stringify(data.drafts.flatMap(d => JSON.parse(d.findings) as { category: string }[]).reduce<Record<string, number>>((counts, finding) => { counts[finding.category] = (counts[finding.category] || 0) + 1; return counts; }, {}), null, 2)}</pre></details></section>
       <section><h2>Members</h2>{data.members.map(m => <p key={m.email}>{m.email} · {m.role}</p>)}
         {data.role === "admin" && <form onSubmit={e => { e.preventDefault(); run({ action: "invite", email: inviteEmail, role }); }}><label>Teammate's sign-in email<input required type="email" maxLength={254} value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} /></label><label>Role<select value={role} onChange={e => setRole(e.target.value)}><option value="reviewer">Reviewer</option><option value="creator">Creator</option></select></label><button disabled={busy}>Grant workspace access</button><small>No email is sent. Share this site's /workspace link; the teammate signs in using this exact email.</small></form>}
       </section>

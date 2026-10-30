@@ -565,6 +565,7 @@ export async function runGroundedGeminiReview(
     // STRICT VALIDATION: Filter out any hallucinated Source IDs!
     const validatedFindings: Finding[] = [];
     payload.findings.forEach((item, index) => {
+      if (!item || typeof item.sourceId !== "string" || typeof item.excerpt !== "string" || !item.excerpt.trim()) return;
       const source = activeSourcesMap.get(item.sourceId);
       if (!source) {
         console.warn(
@@ -572,6 +573,10 @@ export async function runGroundedGeminiReview(
         );
         return;
       }
+      const normalise = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
+      const excerpt = normalise(item.excerpt);
+      if (![body.title, body.text, body.image?.alt || "", body.image?.name || ""].some(text => normalise(text).includes(excerpt))) return;
+      const replacement = item.replacement && typeof item.replacement.from === "string" && typeof item.replacement.to === "string" && [body.title, body.text].some(text => text.includes(item.replacement!.from)) ? item.replacement : undefined;
 
       validatedFindings.push({
         id: `ai:${(item.category || "tone").toLowerCase()}:${index + 1}`,
@@ -584,7 +589,7 @@ export async function runGroundedGeminiReview(
         sourceId: source.id,
         sourceVersion: source.version,
         suggestion: item.suggestion || "Review phrasing in context.",
-        replacement: item.replacement,
+        replacement,
         detectedBy: "ai",
       });
     });

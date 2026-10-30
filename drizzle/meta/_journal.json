@@ -15,6 +15,13 @@
       "when": 1793377122758,
       "tag": "0001_elite_frank_castle",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793378027218,
+      "tag": "0002_lyrical_shape",
+      "breakpoints": true
     }
   ]
 }

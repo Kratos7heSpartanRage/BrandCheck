@@ -1,0 +1,12 @@
+{
+  "name": "NovaDesk One naming policy",
+  "sources": [
+    { "id": "TERM-001", "title": "Product naming", "body": "NovaDesk One is the approved name. Flowly and NovaDesk are retired.", "version": "2.0", "updated": "2026-10-30", "status": "Approved", "kind": "Terminology" },
+    { "id": "CLAIM-001", "title": "Promotional claim evidence", "body": "Quantitative outcome claims require current approved evidence.", "version": "1.0", "updated": "2026-10-30", "status": "Approved", "kind": "Claim policy" }
+  ],
+  "terms": [
+    { "id": "term-flowly", "retired": "Flowly", "preferred": "NovaDesk One", "sourceId": "TERM-001" },
+    { "id": "term-novadesk", "retired": "NovaDesk", "preferred": "NovaDesk One", "sourceId": "TERM-001" }
+  ],
+  "evidence": []
+}

@@ -20,6 +20,17 @@ export const sharedDrafts = sqliteTable("shared_drafts", {
   authorId: text("author_id").notNull(), title: text("title").notNull(), body: text("body").notNull(),
   version: integer("version").notNull(), state: text("state").notNull(), updatedAt: text("updated_at").notNull(),
   mutation: text("mutation").notNull(),
+  findings: text("findings").notNull().default("[]"),
+  policyVersion: integer("policy_version").notNull().default(0),
+});
+export const workspacePolicies = sqliteTable("workspace_policies", {
+  workspaceId: text("workspace_id").primaryKey().references(() => workspaces.id),
+  version: integer("version").notNull(), payload: text("payload").notNull(), mutation: text("mutation").notNull(),
+});
+export const policyProposals = sqliteTable("policy_proposals", {
+  id: text("id").primaryKey(), workspaceId: text("workspace_id").notNull().references(() => workspaces.id),
+  baseVersion: integer("base_version").notNull(), payload: text("payload").notNull(),
+  state: text("state").notNull(), origin: text("origin").notNull(), createdAt: text("created_at").notNull(),
 });
 export const auditEvents = sqliteTable("audit_events", {
   id: text("id").primaryKey(), workspaceId: text("workspace_id").notNull().references(() => workspaces.id),

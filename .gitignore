@@ -40,6 +40,7 @@ yarn-error.log*
 /.codex/
 /outputs/
 /work/
+/public/pdf-worker.mjs
 
 # OS metadata
 .DS_Store

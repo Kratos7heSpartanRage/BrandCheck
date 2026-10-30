@@ -10,12 +10,15 @@ import ts from "typescript";
 
 const directory = resolve("work/shared-tests");
 await mkdir(directory, { recursive: true });
-for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
+for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["lib/policy.ts", "policy"], ["lib/documents.ts", "documents"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
   let compiled = ts.transpileModule(await readFile(source, "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\/)(review|model|aiReview)"/g, '"./$1.mjs"');
+  compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\/)(review|model|aiReview|policy)"/g, '"./$1.mjs"');
   await writeFile(resolve(directory, `${name}.mjs`), compiled);
 }
 const { mutateWorkspace: mutate, readWorkspace: read, listWorkspaces: list } = await import(pathToFileURL(resolve(directory, "shared-review.mjs")).href);
+const { defaultPolicy, checkPolicy, fetchGitHubPolicy, policyDiff, policySchema } = await import(pathToFileURL(resolve(directory, "policy.mjs")).href);
+const { runGroundedGeminiReview } = await import(pathToFileURL(resolve(directory, "aiReview.mjs")).href);
+const { contrastRatio, extractDocument } = await import(pathToFileURL(resolve(directory, "documents.mjs")).href);
 const owner = { userId: "owner", email: "owner@example.com" };
 const creator = { userId: "creator", email: "creator@example.com" };
 const reviewer = { userId: "reviewer", email: "reviewer@example.com" };
@@ -135,4 +138,104 @@ test("a competing write after the initial read loses the CAS without a false eve
   await assert.rejects(mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: 1, title: "Losing edit", body: "Overwritten?" }), denied(409));
   assert.equal(sql.prepare("SELECT body FROM shared_drafts WHERE id = ?").get(draftId).body, "concurrent edit");
   assert.equal(sql.prepare("SELECT COUNT(*) n FROM audit_events WHERE action = 'saveDraft'").get().n, 0);
+});
+function renamePolicy() {
+  const pack = structuredClone(defaultPolicy);
+  pack.terms.push({ id: "rename-nova", retired: "NovaDesk", preferred: "NovaDesk One", sourceId: "TERM-001" });
+  pack.sources[0].version = "2.0";
+  pack.sources[0].body = "NovaDesk One is approved. NovaDesk is retired.";
+  return pack;
+}
+test("policy activation rechecks stored drafts and invalidates an affected approval", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  await mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: 1, title: "Announcement", body: "NovaDesk simplifies work." });
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 2 });
+  await mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 3, decision: "approved", note: "Reviewed" });
+  const proposal = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: renamePolicy() });
+  assert.equal((await read(db, owner, workspaceId)).policy.version, 0);
+  const activated = await mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: proposal.proposalId, accept: true, note: "Approved rename" });
+  assert.equal(activated.rechecked, 1);
+  const value = await read(db, creator, workspaceId);
+  assert.equal(value.policy.version, 1); assert.equal(value.drafts[0].state, "needs_review");
+  assert.equal(JSON.parse(value.drafts[0].findings)[0].sourceVersion, "2.0");
+  assert.ok(value.events.some(e => e.action === "approved"));
+  assert.ok(value.events.some(e => e.action === "policy_recheck"));
+});
+test("rejected policy leaves current rules and approvals unchanged", async () => {
+  const { db, workspaceId } = await fixture();
+  const proposal = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: renamePolicy() });
+  await mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: proposal.proposalId, accept: false, note: "Not yet" });
+  const value = await read(db, owner, workspaceId);
+  assert.equal(value.policy.version, 0); assert.equal(value.proposals[0].state, "rejected");
+});
+test("non-admins cannot change policy; stale proposals cannot overwrite a new version", async () => {
+  const { db, workspaceId } = await fixture();
+  await assert.rejects(mutate(db, creator, { action: "proposePolicy", workspaceId, policy: renamePolicy() }), denied(403));
+  const a = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: renamePolicy() });
+  const b = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: renamePolicy() });
+  await mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: a.proposalId, accept: true, note: "First change" });
+  await assert.rejects(mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: b.proposalId, accept: true, note: "Stale change" }), denied(409));
+});
+test("policy activation and regression rollback together on database failure", async () => {
+  const { db, workspaceId, sql } = await fixture();
+  const proposal = await mutate(db, owner, { action: "proposePolicy", workspaceId, policy: renamePolicy() });
+  sql.exec("CREATE TRIGGER fail_regression BEFORE INSERT ON audit_events WHEN NEW.action = 'policy_recheck' BEGIN SELECT RAISE(ABORT, 'failure'); END;");
+  await assert.rejects(mutate(db, owner, { action: "decidePolicy", workspaceId, proposalId: proposal.proposalId, accept: true, note: "Test rollback" }));
+  const value = await read(db, owner, workspaceId);
+  assert.equal(value.policy.version, 0); assert.equal(value.proposals[0].state, "pending");
+});
+test("new approved name containing old name is not incorrectly flagged", () => {
+  const pack = renamePolicy();
+  assert.equal(checkPolicy(pack, "", "NovaDesk One simplifies work.").filter(f => f.category === "Terminology").length, 0);
+  assert.equal(checkPolicy(pack, "", "NovaDesk simplifies work. NovaDesk One is new.").filter(f => f.category === "Terminology").length, 1);
+});
+test("GitHub connector rejects internal URLs before fetching", async () => {
+  for (const url of ["http://127.0.0.1/internal", "https://example.com/policy.json", "https://raw.githubusercontent.com@evil.example/a/b/c/d"]) await assert.rejects(fetchGitHubPolicy(url));
+});
+test("contrast calculations match known black/white and identical-colour cases", () => {
+  assert.equal(contrastRatio("#000000", "#FFFFFF"), 21);
+  assert.equal(contrastRatio("#777777", "#777777"), 1);
+  assert.ok(contrastRatio("#777777", "#FFFFFF") < 4.5);
+});
+test("plain text intake keeps paragraph locations and rejects unsupported/empty files", async () => {
+  const extracted = await extractDocument(new File(["First paragraph\n\nFlowly launch"], "draft.txt"));
+  assert.equal(extracted.parts[1].label, "Paragraph 2");
+  assert.equal(extracted.parts[1].text, "Flowly launch");
+  await assert.rejects(extractDocument(new File([""], "empty.txt")));
+  await assert.rejects(extractDocument(new File(["bad"], "draft.exe")));
+});
+test("DOCX intake extracts real zipped XML into paragraph-linked text", async () => {
+  const { zipSync, strToU8 } = await import("fflate");
+  const archive = zipSync({
+    "[Content_Types].xml": strToU8('<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>'),
+    "_rels/.rels": strToU8('<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>'),
+    "word/document.xml": strToU8('<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>First paragraph</w:t></w:r></w:p><w:p><w:r><w:t>Flowly launch</w:t></w:r></w:p></w:body></w:document>'),
+  });
+  await writeFile(resolve(directory, "sample.docx"), archive);
+  const extracted = await extractDocument(new File([archive], "sample.docx"));
+  assert.equal(extracted.parts[1].text, "Flowly launch");
+  assert.equal(extracted.parts[1].label, "Paragraph 2");
+});
+test("policy differences ignore JSON property ordering", () => {
+  const result = policyDiff(defaultPolicy, policySchema.parse(defaultPolicy));
+  assert.deepEqual(result.sources.changed, []);
+  assert.deepEqual(result.terms.changed, []);
+});
+test("explicit recheck recovers a pending draft without allowing a stale approval", async () => {
+  const { db, workspaceId, draftId } = await fixture();
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 1 });
+  await mutate(db, reviewer, { action: "recheckDraft", workspaceId, draftId, version: 2 });
+  assert.equal((await read(db, creator, workspaceId)).drafts[0].state, "needs_review");
+  await mutate(db, creator, { action: "saveDraft", workspaceId, draftId, version: 3, title: "Revised", body: "Ready again" });
+  await mutate(db, creator, { action: "submit", workspaceId, draftId, version: 4 });
+  assert.equal((await read(db, reviewer, workspaceId)).drafts[0].state, "submitted");
+});
+test("AI findings require real excerpts and active citations; invalid replacement targets are dropped", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    const valid = { category: "Terminology", severity: "Needs attention", evidenceStatus: "Rule match", location: "Draft text", excerpt: "Flowly", sourceId: "TERM-001", explanation: "Retired name", suggestion: "Use NovaDesk", replacement: { from: "invented text", to: "NovaDesk" } };
+    globalThis.fetch = async () => Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ findings: [valid, { ...valid, excerpt: "Content that was never written" }, { ...valid, sourceId: "invented-source" }], assessment: { riskLevel: "Moderate", score: 50, summary: "Needs review", claimRiskNote: "", toneRiskNote: "", suggestedRewrite: "NovaDesk" } }) }] } }] });
+    const result = await runGroundedGeminiReview({ title: "Draft", text: "Flowly launch", channel: "Social", audience: "Teams", image: null }, defaultPolicy.sources, defaultPolicy.terms, [], "test-key-not-a-real-secret");
+    assert.equal(result.findings.length, 1); assert.equal(result.findings[0].excerpt, "Flowly"); assert.equal(result.findings[0].replacement, undefined);
+  } finally { globalThis.fetch = originalFetch; }
 });

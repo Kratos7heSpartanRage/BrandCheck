@@ -43,9 +43,17 @@ export function reviewDraft(
       const source = active.get(term.sourceId);
       if (!source || !term.retired.trim() || !term.preferred.trim()) continue;
       const escaped = term.retired.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const match = text.match(
-        new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "iu"),
-      );
+      const candidates = text.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "giu"));
+      const match = Array.from(candidates).find(candidate => {
+        const start = candidate.index ?? 0;
+        const offset = term.preferred.toLowerCase().indexOf(term.retired.toLowerCase());
+        if (offset < 0 || start < offset) return true;
+        const preferredStart = start - offset;
+        const end = preferredStart + term.preferred.length;
+        const isPreferred = text.slice(preferredStart, end).toLowerCase() === term.preferred.toLowerCase()
+          && !/[\p{L}\p{N}]/u.test(text[end] || " ");
+        return !isPreferred;
+      });
       if (match)
         findings.push(
           makeFinding(source, {
