@@ -5,6 +5,8 @@ BrandCheck connects approved brand guidelines, content review and human approval
 Product: https://brandcheck-codestar-judge.freelynx19.chatgpt.site  
 Deployed source branch: https://github.com/Manas-Jain-24/brandcheck/tree/judge-hosted
 
+[CodeStar 30 links and requirements](HACKATHON.md) · [Latest validation record](docs/TESTING.md)
+
 ## Main product flow
 
 1. Sign in and create a workspace. New workspaces start with generic claim/tone guidance and no fictional brand facts. NovaDesk example data is an explicit opt-in.
