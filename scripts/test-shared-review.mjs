@@ -469,3 +469,11 @@ test("visual review does not mistake an approved longer name or file-hash statem
   assert.equal(mixed.findings.length, 1);
   assert.equal(mixed.findings[0].category, "Terminology");
 });
+test("visual review omits positive model observations with no corrective action", () => {
+  const image = { name: "poster.webp", sha256: "f".repeat(64) };
+  const result = groundVisualResult({ visibleText: "", observations: [
+    { sourceId: "TERM-001", observation: "The text uses the approved product name", suggestedAction: "None required" },
+    { sourceId: "TONE-001", observation: "The copy is compliant with the guideline", suggestedAction: "Continue using it" },
+  ] }, image, defaultPolicy, "test-model");
+  assert.equal(result.findings.length, 0);
+});

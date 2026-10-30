@@ -64,7 +64,7 @@ Use Node 22.13+ and pnpm 11.25.0. Configure `GEMINI_API_KEY` and optional `GEMIN
 - `pnpm dev`: local preview with the starter's development sign-in facility.
 - `pnpm exec tsc --noEmit`: strict type checking.
 - `pnpm run db:generate`: additive migration generation; inspect generated SQL/metadata.
-- `node scripts/test-shared-review.mjs`: 45 SQLite-backed service/transport/document tests using actual migrations.
+- `node scripts/test-shared-review.mjs`: 46 SQLite-backed service/transport/document tests using actual migrations.
 - `node scripts/create-document-fixtures.mjs`: real two-page PDF fixture in ignored `work/`.
 - Build and publish through the Sites skill helpers to retain Worker metadata and apply production migrations.
 

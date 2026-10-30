@@ -19,6 +19,9 @@ export function groundVisualResult(raw: unknown, image: ImageMeta, pack: Policy,
     if (!source) continue;
     // A model cannot visually establish SHA-256 identity or approval status.
     if (/fingerprint|sha[ -]?256|approved (?:asset )?library|file hash/i.test(observation.observation)) continue;
+    // A positive confirmation is not an issue to put in a creator's review queue.
+    if (/^(?:none|nothing|no (?:action|change|correction|issue)|not applicable)/i.test(observation.suggestedAction.trim())) continue;
+    if (/\b(?:uses|includes|matches|follows) (?:the |an? )?approved\b|\b(?:compliant|consistent with the guideline)\b/i.test(observation.observation)) continue;
     findings.push({
       id: `visual:${image.sha256.slice(0,12)}:${index}`,
       category: source.kind === "Accessibility" ? "Accessibility" : source.kind === "Messaging" ? "Messaging" : source.kind === "Terminology" ? "Terminology" : "Asset usage",
