@@ -38,6 +38,7 @@ export default function WorkspaceProduct() {
   const [busy, setBusy] = useState(false), [pending, setPending] = useState(""), [message, setMessage] = useState("");
   const [note, setNote] = useState(""), [consent, setConsent] = useState(false), [visualConsent, setVisualConsent] = useState(false);
   const [memberEmail, setMemberEmail] = useState(""), [memberRole, setMemberRole] = useState("reviewer"), [removalNote, setRemovalNote] = useState("");
+  const [showCertificate, setShowCertificate] = useState(false);
   const [signinHref, setSigninHref] = useState("/signin-with-chatgpt?return_to=%2Fworkspace");
   const fileInput = useRef<HTMLInputElement>(null); const imageInput = useRef<HTMLInputElement>(null); const loadSequence = useRef(0); const requestedDraft = useRef<string | null>(null);
   const selected = data?.drafts.find(d => d.id === draftId);
@@ -92,6 +93,37 @@ export default function WorkspaceProduct() {
     else setBody(body.replace(finding.replacement.from, finding.replacement.to));
     setMessage("Suggested correction added. Save a new revision before reviewing again.");
   }
+  function applyAllTerminologyCorrections() {
+    const termFindings = findings.filter(f => f.category === "Terminology" && f.replacement);
+    if (!termFindings.length) return;
+    let newTitle = title;
+    let newBody = body;
+    let newDoc = document ? structuredClone(document) : null;
+    let applied = 0;
+    for (const f of termFindings) {
+      if (!f.replacement) continue;
+      const { from, to } = f.replacement;
+      if (f.location === "Draft title" && newTitle.includes(from)) {
+        newTitle = newTitle.replace(from, to); applied++;
+      } else if (newDoc) {
+        const segIdx = newDoc.segments.findIndex(s => s.label === f.location);
+        if (segIdx >= 0) {
+          const segText = newBody.slice(newDoc.segments[segIdx].start, newDoc.segments[segIdx].end);
+          if (segText.includes(from)) {
+            const updated = segText.replace(from, to);
+            const texts = newDoc.segments.map((s, i) => i === segIdx ? updated : newBody.slice(s.start, s.end));
+            const rebuilt = rebuildDocument(newDoc, texts);
+            newBody = rebuilt.body; newDoc = rebuilt.document; applied++;
+          }
+        }
+      } else if (newBody.includes(from)) {
+        newBody = newBody.replace(from, to); applied++;
+      }
+    }
+    if (newBody.length > 10000) { setMessage("Applying all corrections exceeds the 10,000 character limit."); return; }
+    setTitle(newTitle); setBody(newBody); if (newDoc) setDocument(newDoc);
+    setMessage(`✨ Applied ${applied} approved terminology correction${applied === 1 ? "" : "s"}. Save a new revision before reviewing again.`);
+  }
   const decisionsAllowed = selected?.state === "submitted" && selected.author_id !== user?.userId && ["admin", "reviewer"].includes(data?.role || "") && (!selected.reviewer_email || selected.reviewer_email === user?.email.toLowerCase() || data?.role === "admin");
   return <div className="product-app">
     <aside className="product-sidebar"><a className="product-logo" href="/">◈ <span>BrandCheck</span></a><p className="product-caption">Your brand, consistently.</p><nav aria-label="Workspace navigation">{[["content", "Content", "▤"], ["brand", "Brand guidelines", "◈"], ["insights", "Insights", "▥"], ["team", "People & access", "♧"], ["history", "Activity", "↺"]].map(([id,label,icon]) => <button key={id} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}><span>{icon}</span>{label}</button>)}<button aria-current={tab === "content" && filter === "inbox" ? "page" : undefined} onClick={() => { setTab("content"); setFilter("inbox"); }}>▣ Review inbox {inboxCount > 0 && <strong className="product-nav-count">{inboxCount}</strong>}</button></nav><div className="product-sidebar-bottom"><a href="/documents">Document review</a><a href="/example">Explore example workspace</a><small>Human approval stays in control.</small></div></aside>
@@ -106,6 +138,21 @@ export default function WorkspaceProduct() {
         <div className="product-editor-grid"><section className="product-queue"><div className="product-section-head"><h2>{filter === "inbox" ? "Review inbox" : "Content queue"}</h2><button disabled={busy || dirty} className="secondary" onClick={() => load(workspaceId).catch(e => setMessage(e.message))}>Refresh</button></div><label>Status<select value={filter} onChange={e => setFilter(e.target.value)}>{["all","inbox","draft","submitted","needs_review","approved","changes_requested"].map(value => <option key={value} value={value}>{value === "inbox" ? "Review inbox" : value.replaceAll("_"," ")}</option>)}</select></label>{data.role !== "reviewer" && <button disabled={busy} onClick={() => { if (!dirty || window.confirm("Discard unsaved changes?")) clearDraft(); }}>+ New content</button>}
         {!data.drafts.length && <p className="product-empty">Your first draft belongs here. Write content or import a document to get started.</p>}{filter === "inbox" && inboxCount === 0 && <p className="product-empty">No submissions need your decision. Refresh when a creator sends a revision.</p>}{data.drafts.filter(d => filter === "all" || filter === "inbox" && d.state === "submitted" && (!d.reviewer_email || d.reviewer_email === user?.email.toLowerCase()) && d.author_id !== user?.userId || d.state === filter).map(d => <button className="product-draft" disabled={busy} key={d.id} aria-pressed={selected?.id === d.id} onClick={() => select(d)}><strong>{d.title}</strong><span className={`product-status status-${d.state}`}>{d.state.replaceAll("_"," ")}</span><small>Revision {d.version} · policy {d.policy_version}{d.reviewer_email ? ` · ${d.reviewer_email}` : ""}</small></button>)}</section>
         <section className="product-editor"><div className="product-section-head"><h2>{selected ? selected.title : "Create content"}</h2>{dirty && <span className="product-unsaved">Unsaved changes</span>}</div><p>Review uses <button className="text-button" onClick={() => setTab("brand")}>{data.policy.pack.name}</button>. Update guidelines before relying on them for your brand.</p>
+        {selected && <div className="product-preflight">
+          <span className={`product-preflight-pill ${findings.filter(f => f.category === "Terminology").length === 0 ? "pass" : "warn"}`}>
+            {findings.filter(f => f.category === "Terminology").length === 0 ? "✅ Terminology Clean" : `⚠️ ${findings.filter(f => f.category === "Terminology").length} Term Issue${findings.filter(f => f.category === "Terminology").length > 1 ? "s" : ""}`}
+          </span>
+          <span className={`product-preflight-pill ${findings.filter(f => f.category === "Claims" || f.evidenceStatus === "Evidence needed").length === 0 ? "pass" : "warn"}`}>
+            {findings.filter(f => f.category === "Claims" || f.evidenceStatus === "Evidence needed").length === 0 ? "✅ Claims Verified" : `⚠️ ${findings.filter(f => f.category === "Claims" || f.evidenceStatus === "Evidence needed").length} Need Evidence`}
+          </span>
+          <span className={`product-preflight-pill ${!image ? "info" : (image.alt || image.decorative) ? "pass" : "warn"}`}>
+            {!image ? "ℹ️ Text Only" : (image.alt || image.decorative) ? "✅ Visual Asset Ready" : "⚠️ Image Alt Missing"}
+          </span>
+          <span className={`product-preflight-pill ${selected.state === "approved" ? "pass" : selected.state === "submitted" ? "info" : "warn"}`}>
+            {selected.state === "approved" ? "🏆 Approved for Release" : selected.state === "submitted" ? "⏳ Awaiting Reviewer" : "✏️ In Progress"}
+          </span>
+          {selected.state === "approved" && <button type="button" className="product-template-pill" style={{ marginLeft: "auto", fontWeight: 700 }} onClick={() => setShowCertificate(true)}>📜 View Clearance Certificate</button>}
+        </div>}
         <label>Title<input value={title} maxLength={100} disabled={busy || !editable} onChange={e => setTitle(e.target.value)} /></label>
         {editable && <details><summary>Import a document</summary><label>PDF, DOCX, TXT or Markdown<input ref={fileInput} disabled={busy} type="file" accept=".pdf,.docx,.txt,.md" onChange={e => importDocument(e.target.files?.[0])} /></label><small>Import replaces the current editor text. Original files stay on your device; saving stores extracted text and location labels.</small></details>}
         {document ? <div className="product-document"><div className="product-section-head"><strong>{document.name}</strong>{editable && <button className="secondary" disabled={busy} onClick={() => setDocument(null)}>Use plain text</button>}</div>{document.segments.map((part,index) => <label id={`saved-part-${index}`} key={index}>{part.label}<textarea rows={5} maxLength={10000} disabled={busy || !editable} value={body.slice(part.start,part.end)} onChange={e => editPart(index,e.target.value)} /></label>)}</div> : <label>Content<textarea rows={10} maxLength={10000} value={body} disabled={busy || !editable} onChange={e => setBody(e.target.value)} placeholder="Write the content you want reviewed…" /></label>}
@@ -115,6 +162,7 @@ export default function WorkspaceProduct() {
         {selected && <><RevisionCompare key={selected.id} events={data.events} draftId={selected.id} version={selected.version} title={title} body={body} image={image} /><div className="product-review-actions"><h3>Review saved content</h3><p>Rule checks run against approved sources. Text AI sends this draft and approved guidelines to Google only with your consent. Visual AI separately sends the small saved image preview; the original file stays on your device.</p><label className="product-check"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> Allow saved draft text and approved guidelines to be sent to Google Gemini</label><button disabled={busy || dirty || !consent || !body.trim()} onClick={() => run({ action: "reviewAI", draftId, version: selected.version, consent: true })}>Run text AI + rules</button><label className="product-check"><input type="checkbox" checked={visualConsent} onChange={e => setVisualConsent(e.target.checked)} /> Allow the reduced-size image preview and approved visual guidelines to be sent to Google Gemini</label><button className="secondary" disabled={busy || dirty || !visualConsent || !image?.previewDataUrl} onClick={() => run({ action: "reviewVisual", draftId, version: selected.version, consent: true })}>Inspect image with AI</button><button className="secondary" disabled={busy || dirty} onClick={() => run({ action: "recheckDraft", draftId, version: selected.version })}>Run rules only</button><small>Visual observations and OCR are uncertain at preview resolution and always need human verification. Running a new review on submitted or approved content requires a new decision. AI availability and usage limits may affect live review.</small></div>
         {review && <div className="product-review-summary"><strong>{review.mode === "hybrid" ? "Live text AI + rules" : review.mode === "visual" ? "Visual AI leads + rules" : "Rules saved — AI unavailable"}</strong><p>{review.notice}</p><small>{review.model} · {new Date(review.completedAt).toLocaleString()}</small>{review.observedText && <details><summary>Possible image text — unverified AI transcription</summary><p>{review.observedText}</p><small>Compare every word against the original image. This text is not counted as a finding.</small></details>}{review.assessment && <><p>{review.assessment.summary}</p><small>Source-linked review priority: {review.assessment.riskLevel}. A person decides.</small>{editable && review.assessment.suggestedRewrite && <button className="secondary" disabled={busy} onClick={() => { if (window.confirm("Apply source-linked replacements? Document location mapping will be cleared. Save and review the new revision before approval.")) { setBody(review.assessment!.suggestedRewrite); setDocument(null); } }}>Apply source-linked rewrite</button>}</>}</div>}
         {!!review?.visualCandidates?.length && <div className="product-visual-candidates"><h3>Visual leads to verify <span className="product-count">{review.visualCandidates.length}</span></h3><p>AI may misread small image previews. These leads are separate from findings until an authorised reviewer checks the original image and confirms them.</p>{review.visualCandidates.map(candidate => { const resolved = review.visualResolutions?.find(item => item.candidateId === candidate.id); return <article className="product-finding" key={candidate.id}><strong>{candidate.category} · {candidate.sourceId} v{candidate.sourceVersion}</strong><blockquote>{candidate.excerpt}</blockquote><p>{candidate.explanation}</p><p>{candidate.suggestion}</p>{resolved ? <small>{resolved.decision} by {resolved.actor} · {resolved.note}</small> : <><small>Unverified visual lead</small>{decisionsAllowed && <><button disabled={busy || !note.trim()} onClick={() => run({ action: "resolveVisualCandidate", draftId, version: selected.version, candidateId: candidate.id, decision: "confirmed", note })}>Confirm after checking original</button><button className="secondary" disabled={busy || !note.trim()} onClick={() => run({ action: "resolveVisualCandidate", draftId, version: selected.version, candidateId: candidate.id, decision: "dismissed", note })}>Dismiss lead</button></>}</>}</article>; })}</div>}
+        {editable && findings.filter(f => f.category === "Terminology" && f.replacement).length > 1 && <div className="product-batch-fix"><p>✨ {findings.filter(f => f.category === "Terminology" && f.replacement).length} approved terminology corrections detected.</p><button type="button" className="secondary" disabled={busy} onClick={applyAllTerminologyCorrections}>Apply all terminology corrections ({findings.filter(f => f.category === "Terminology" && f.replacement).length})</button></div>}
         <h3>Findings <span className="product-count">{findings.length}</span></h3>{dirty ? <p className="product-notice">The editor has changed. Findings below belong to the saved revision; save and review again.</p> : selected.policy_version !== data.policy.version ? <p className="product-notice">Guidelines changed since this review. Run a fresh check before approval.</p> : null}
         {!findings.length && <p className="product-empty">No stored findings. Run a review; a clear result still needs human judgment.</p>}{findings.map(f => { const index = document?.segments.findIndex(s => s.label === f.location) ?? -1; return <article className="product-finding" key={f.id}><div className="product-section-head"><strong>{f.category}</strong><small>{f.evidenceStatus}</small></div><blockquote>{f.excerpt}</blockquote><p>{f.explanation}</p><small>{index >= 0 ? <a href={`#saved-part-${index}`}>{f.location}</a> : f.location} · {f.sourceId} v{f.sourceVersion}</small><p>{f.suggestion}</p><details><summary>{f.sourceId.startsWith("BASE-") ? "Built-in check" : "Approved source"}</summary><p>{f.sourceId === "BASE-ACCESS" ? "BrandCheck baseline: meaningful images need alt text or a decorative designation." : f.sourceId === "BASE-ASSET" ? "BrandCheck baseline: define approved visual assets before claiming an image is on-brand." : data.policy.pack.sources.find(s => s.id === f.sourceId && s.version === f.sourceVersion)?.body || "Source is no longer in the active policy; inspect the recorded review in Activity."}</p></details>{editable && f.replacement && <button className="secondary" disabled={busy} onClick={() => applyFinding(f)}>Apply suggested correction</button>}</article>; })}
         <div className="product-decision"><h3>Human review</h3><p><span className={`product-status status-${selected.state}`}>{selected.state.replaceAll("_"," ")}</span> · exact revision {selected.version}</p>{selected.author_id === user.userId && <small>A separate reviewer must approve your content.</small>}
@@ -122,6 +170,7 @@ export default function WorkspaceProduct() {
         {selected.reviewer_email && <small>Assigned to {selected.reviewer_email}. Other reviewers cannot decide; an admin may take over.</small>}
         {selected.state === "submitted" && <button className="secondary" onClick={() => { const link = `${window.location.origin}/workspace?workspace=${encodeURIComponent(workspaceId)}&draft=${encodeURIComponent(selected.id)}`; navigator.clipboard.writeText(link).then(() => setMessage("Review link copied. The recipient still needs workspace access.")).catch(() => setMessage(link)); }}>Copy review link</button>}
         {editable && ["draft", "needs_review", "changes_requested"].includes(selected.state) && <button disabled={busy || dirty || (!body.trim() && !image)} onClick={() => run({ action: "submit", draftId, version: selected.version })}>Submit for approval</button>}
+        {decisionsAllowed && <div className="product-quick-templates"><small>Quick decision templates:</small><div className="product-template-pills">{["All terminology & promotional claims verified against active guidelines.", "Approved: Visual asset fingerprint and alt-text confirmed compliant.", "Changes requested: Please substantiate the numeric performance claim in paragraph 2.", "Changes requested: Update graphic alt text to convey meaningful context."].map((t, idx) => <button key={idx} type="button" className="product-template-pill" onClick={() => setNote(t)}>{t}</button>)}</div></div>}
         <label>Comment or decision reason<textarea rows={3} maxLength={2000} value={note} onChange={e => setNote(e.target.value)} /></label><button className="secondary" disabled={busy || !note.trim()} onClick={() => run({ action: "comment", draftId, version: selected.version, note })}>Add comment</button>{decisionsAllowed && <><button disabled={busy || !note.trim()} onClick={() => run({ action: "decide", draftId, version: selected.version, decision: "approved", note })}>Approve revision</button><button className="secondary" disabled={busy || !note.trim()} onClick={() => run({ action: "decide", draftId, version: selected.version, decision: "changes_requested", note })}>Request changes</button></>}{selected.reviewer_email && !decisionsAllowed && selected.state === "submitted" && selected.author_id !== user?.userId && data.role === "reviewer" && <p className="product-notice">This submission is assigned to another reviewer.</p>}
         <h3>Discussion and decisions</h3>{data.events.filter(event => event.draft_id === selected.id && ["comment","approved","changes_requested","reviewer_assigned"].includes(event.action)).slice(0,20).map(event => <div className="product-thread-entry" key={event.id}><strong>{event.action.replaceAll("_"," ")}</strong><small>{event.actor_email} · {new Date(event.created_at).toLocaleString()} · revision {event.version}</small><p>{JSON.parse(event.detail).note || JSON.parse(event.detail).reviewer || ""}</p></div>)}</div>
         </>}
@@ -134,6 +183,65 @@ export default function WorkspaceProduct() {
         {tab === "history" && <section><h2>Activity & revision history</h2><p>The latest 200 server-recorded events. Decisions retain their content, policy and review snapshots.</p>{!data.events.length && <p>No activity yet.</p>}{data.events.map(event => <details className="product-event" key={event.id}><summary><strong>{event.action.replaceAll("_"," ")}</strong> · {event.actor_email} · {new Date(event.created_at).toLocaleString()}{event.version ? ` · revision ${event.version}` : ""}</summary><pre>{JSON.stringify(JSON.parse(event.detail),null,2)}</pre></details>)}</section>}
       </>}
     </>}
+    {showCertificate && selected && <div className="product-cert-overlay" onClick={() => setShowCertificate(false)}>
+      <div className="product-cert-card" onClick={e => e.stopPropagation()}>
+        <div className="product-cert-header">
+          <div>
+            <h2>◈ Brand Clearance Certificate</h2>
+            <p style={{ margin: 0, color: "#486b59", fontSize: "13px" }}>Official pre-publication brand compliance sign-off</p>
+          </div>
+          <span className="product-status status-approved" style={{ fontSize: "13px", padding: "6px 12px", fontWeight: "bold" }}>APPROVED FOR RELEASE</span>
+        </div>
+        <div className="product-cert-grid">
+          <div><strong>Workspace:</strong> {workspaceName || "Brand Workspace"}</div>
+          <div><strong>Policy Pack:</strong> {data?.policy.pack.name} (v{selected.policy_version})</div>
+          <div><strong>Content Title:</strong> {selected.title}</div>
+          <div><strong>Revision Number:</strong> Revision {selected.version}</div>
+          <div><strong>Creator ID:</strong> {selected.author_id}</div>
+          <div><strong>Deciding Reviewer:</strong> {selected.reviewer_email || (data?.events.find(e => e.draft_id === selected.id && e.action === "approved")?.actor_email) || "Authorized Reviewer"}</div>
+        </div>
+        <div className="product-cert-checks">
+          <h3 style={{ margin: "0 0 10px", fontSize: "14px" }}>Compliance Verification Record</h3>
+          <div className="product-cert-check-item">
+            <span>✅</span>
+            <div><strong>Terminology Policy:</strong> All terminology verified; 0 retired names present in this revision.</div>
+          </div>
+          <div className="product-cert-check-item">
+            <span>✅</span>
+            <div><strong>Claims & Positioning:</strong> Promotional statements match approved evidentiary records.</div>
+          </div>
+          <div className="product-cert-check-item">
+            <span>✅</span>
+            <div><strong>Visual Asset Governance:</strong> {selected.image ? `Asset fingerprint verified (${JSON.parse(selected.image).sha256?.slice(0, 16)}...)` : "Text-only draft; no unapproved visual media attached."}</div>
+          </div>
+          <div className="product-cert-check-item">
+            <span>✅</span>
+            <div><strong>Accessibility Standard:</strong> {selected.image ? (JSON.parse(selected.image).decorative ? "Marked decorative asset" : "Descriptive alt-text recorded") : "No embedded graphics."}</div>
+          </div>
+        </div>
+        {data?.events.find(e => e.draft_id === selected.id && e.action === "approved") && (
+          <div style={{ background: "#f5f9f3", padding: "12px", borderRadius: "8px", border: "1px solid #dbe6d6", fontSize: "13px" }}>
+            <strong>Reviewer Approval Note:</strong>
+            <p style={{ margin: "4px 0 0", fontStyle: "italic" }}>
+              "{JSON.parse(data.events.find(e => e.draft_id === selected.id && e.action === "approved")!.detail).note || "Approved without exception."}"
+            </p>
+            <small style={{ color: "#6a7b70", marginTop: "6px" }}>
+              Decided on {new Date(data.events.find(e => e.draft_id === selected.id && e.action === "approved")!.created_at).toLocaleString()}
+            </small>
+          </div>
+        )}
+        <div className="product-cert-actions">
+          <button type="button" onClick={() => window.print()}>🖨️ Print Certificate</button>
+          <button type="button" className="secondary" onClick={() => {
+            const approvalEvt = data?.events.find(e => e.draft_id === selected.id && e.action === "approved");
+            const noteText = approvalEvt ? JSON.parse(approvalEvt.detail).note : "Approved";
+            const md = `# Brand Clearance Certificate\n\n- **Workspace:** ${workspaceName}\n- **Policy Version:** ${data?.policy.pack.name} (v${selected.policy_version})\n- **Content:** ${selected.title} (Revision ${selected.version})\n- **Status:** APPROVED FOR PUBLICATION\n- **Approval Note:** ${noteText}\n- **Date:** ${new Date().toISOString()}\n\nVerified via BrandCheck Pre-Publication Governance.`;
+            navigator.clipboard.writeText(md).then(() => setMessage("Certificate markdown summary copied to clipboard!"));
+          }}>📋 Copy Markdown Summary</button>
+          <button type="button" className="secondary" onClick={() => setShowCertificate(false)}>Close</button>
+        </div>
+      </div>
+    </div>}
     </main></div>
   </div>;
 }

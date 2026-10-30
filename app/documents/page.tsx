@@ -14,6 +14,22 @@ export default function DocumentReview() {
   const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[] | null>(null); const [workspaceId, setWorkspaceId] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const ratio = contrastRatio(foreground, background);
+  function autoFixContrast() {
+    const hexToRgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+    const rgbToHex = (r: number, g: number, b: number) => "#" + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0")).join("");
+    const [br, bg, bb] = hexToRgb(background);
+    const bgLum = 0.2126 * (br / 255) + 0.7152 * (bg / 255) + 0.0722 * (bb / 255);
+    let [fr, fg, fb] = hexToRgb(foreground);
+    for (let step = 0; step < 120; step++) {
+      const curRatio = contrastRatio(rgbToHex(fr, fg, fb), background);
+      if (curRatio >= 4.55) break;
+      if (bgLum > 0.5) { fr = Math.max(0, fr - 4); fg = Math.max(0, fg - 4); fb = Math.max(0, fb - 4); }
+      else { fr = Math.min(255, fr + 4); fg = Math.min(255, fg + 4); fb = Math.min(255, fb + 4); }
+    }
+    const optimized = rgbToHex(fr, fg, fb);
+    setForeground(optimized);
+    setMessage(`Optimized text color to ${optimized} for compliant 4.5:1 contrast.`);
+  }
   async function importFile(file?: File) {
     if (!file) return; setBusy(true); setMessage(""); setDocument(null); setFindings([]); setReviewed(false);
     try { setDocument(await extractDocument(file)); } catch (error) { setMessage(error instanceof Error ? error.message : "Cannot import this document."); } finally { setBusy(false); if (input.current) input.current.value = ""; }
@@ -65,6 +81,29 @@ export default function DocumentReview() {
         <a className="button" href="/workspace">Open shared workspaces</a>
       </section>
     </>}
-    <section><h2>Text contrast check</h2><p>Check an explicit foreground/background pair against text contrast thresholds. This does not inspect logo clear space, infer image backgrounds or certify full accessibility.</p><label>Text colour<input type="color" value={foreground} onChange={e => setForeground(e.target.value)} /></label><label>Background colour<input type="color" value={background} onChange={e => setBackground(e.target.value)} /></label><p style={{ background, color: foreground, padding: 18 }}>Brand message preview</p><strong>Contrast {ratio.toFixed(2)}:1</strong><p>{ratio >= 4.5 ? "Passes the 4.5:1 threshold for normal text." : ratio >= 3 ? "Passes 3:1 for qualifying large text; fails 4.5:1 for normal text." : "Below both normal-text and large-text thresholds. Choose a higher-contrast pair."}</p></section>
+    <section>
+      <h2>Text contrast check & accessibility compliance</h2>
+      <p>Check an explicit foreground/background pair against WCAG 2.2 contrast thresholds. This does not infer complex image backgrounds or certify complete accessibility.</p>
+      <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", alignItems: "center" }}>
+        <label>Text colour ({foreground})<input type="color" value={foreground} onChange={e => setForeground(e.target.value)} /></label>
+        <label>Background colour ({background})<input type="color" value={background} onChange={e => setBackground(e.target.value)} /></label>
+        {ratio < 4.5 && <button type="button" onClick={autoFixContrast} style={{ marginTop: "16px" }}>✨ Auto-Adjust to Compliant 4.5:1 Contrast</button>}
+      </div>
+      <p style={{ background, color: foreground, padding: 18, borderRadius: 8, fontSize: "16px", fontWeight: 600, border: "1px solid #cbdad2", margin: "14px 0" }}>
+        Brand message preview: "NovaDesk helps teams review content before publication."
+      </p>
+      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", margin: "12px 0" }}>
+        <strong>Contrast {ratio.toFixed(2)}:1</strong>
+        <span style={{ padding: "4px 10px", borderRadius: "14px", fontSize: "12px", fontWeight: 600, background: ratio >= 4.5 ? "#edf5ec" : "#fef1f1", color: ratio >= 4.5 ? "#225c2e" : "#8c2828", border: `1px solid ${ratio >= 4.5 ? "#82b388" : "#d99b9b"}` }}>
+          WCAG AA Normal Text (4.5:1): {ratio >= 4.5 ? "PASS ✅" : "FAIL ❌"}
+        </span>
+        <span style={{ padding: "4px 10px", borderRadius: "14px", fontSize: "12px", fontWeight: 600, background: ratio >= 3.0 ? "#edf5ec" : "#fef1f1", color: ratio >= 3.0 ? "#225c2e" : "#8c2828", border: `1px solid ${ratio >= 3.0 ? "#82b388" : "#d99b9b"}` }}>
+          WCAG AA Large Text (3.0:1): {ratio >= 3.0 ? "PASS ✅" : "FAIL ❌"}
+        </span>
+        <span style={{ padding: "4px 10px", borderRadius: "14px", fontSize: "12px", fontWeight: 600, background: ratio >= 7.0 ? "#edf5ec" : "#f8f9f6", color: ratio >= 7.0 ? "#225c2e" : "#6c7b72", border: `1px solid ${ratio >= 7.0 ? "#82b388" : "#cad7ca"}` }}>
+          WCAG AAA Enhanced (7.0:1): {ratio >= 7.0 ? "PASS ✅" : "NOT MET"}
+        </span>
+      </div>
+    </section>
   </main>;
 }
