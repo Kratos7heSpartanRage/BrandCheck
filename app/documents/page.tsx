@@ -53,57 +53,338 @@ export default function DocumentReview() {
     const extension = document.name.split(".").pop()?.toLowerCase();
     return { name: document.name.slice(0,200), type: ["pdf","docx","txt","md"].includes(extension || "") ? extension : "txt", segments };
   }
-  return <main className="document-desk">
-    <style>{`.document-desk{max-width:1100px;margin:auto;padding:24px;font:16px/1.5 system-ui;color:#163c32}.document-desk section,.document-desk article{padding:20px;background:white;border:1px solid #cbdad2;border-radius:12px;margin:16px 0}.document-desk button,.document-desk .button{padding:10px 15px;border:0;border-radius:7px;background:#164e43;color:white;margin:5px 8px 5px 0;cursor:pointer;display:inline-block}.document-desk button:disabled{opacity:.5;cursor:default}.document-desk textarea,.document-desk select{display:block;padding:10px;width:100%;box-sizing:border-box;border:1px solid #96afa4;border-radius:8px;background:white;color:#163c32}.document-columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}.document-desk a{color:#145942;text-decoration:underline}.document-desk .notice{padding:14px;background:#fff0c9}.document-desk .focused{outline:3px solid #207660}.document-desk small{display:block}.document-desk label{display:block;margin:12px 0}.document-desk input[type=color]{margin-left:10px;width:70px;height:40px}@media(max-width:720px){.document-columns{grid-template-columns:1fr}.document-desk{padding:14px}}`}</style>
-    <a href="/">← BrandCheck review desk</a> · <a href="/workspace">Shared workspaces</a>
-    <h1>Document review and visual checks</h1><p>Import a document, inspect source-linked findings and jump to its page or paragraph. Parsing and these rule checks run on your device.</p>
-    <section><h2>1. Import content</h2><label>PDF, DOCX, text or Markdown (up to 15 MB)<input ref={input} type="file" accept=".pdf,.docx,.txt,.md" disabled={busy} onChange={e => importFile(e.target.files?.[0])} /></label>
-      <button disabled={busy} onClick={() => { setDocument({ name: "Example launch document", parts: [{ label: "Page 1", text: "NovaDesk is designed to simplify daily work." }, { label: "Page 2", text: "Flowly guarantees 2x productivity for every team." }], warnings: ["This is a built-in sample, not an uploaded PDF."] }); setReviewed(false); setFindings([]); setMessage(""); }}>Try a two-page example</button>
-      <small>Up to 40 PDF pages, 400 DOCX paragraphs and 80,000 extracted characters. Scanned PDFs need OCR and will be identified as unsupported. Page links are text-location links, not pixel-coordinate highlights.</small>
-    </section>
-    {busy && <p role="status">Processing document or workspace request…</p>}{message && <p className="notice" role="status">{message}</p>}
-    {document && <><p><strong>{document.name}</strong> · {document.parts.length} text sections ({document.parts.map(p => p.text).join("\n\n").length.toLocaleString()} characters). Source policy: {defaultPolicy.name}.</p>{document.warnings.map((warning, i) => <p className="notice" key={i}>{warning}</p>)}
-      <button onClick={review}>2. Review extracted text</button><small>Editing a section clears findings; run review again. No content is sent to an AI service on this page.</small>
-      <div className="document-columns"><section><h2>Document text</h2>{document.parts.map((part, index) => <article id={`document-part-${index}`} className={focused === index ? "focused" : ""} key={index}><label>{part.label}<textarea rows={6} value={part.text} onChange={e => { setDocument({ ...document, parts: document.parts.map((p, i) => i === index ? { ...p, text: e.target.value } : p) }); setReviewed(false); setFindings([]); }} maxLength={10000} /></label></article>)}</section>
-      <section><h2>Explained findings {reviewed ? `(${findings.length})` : ""}</h2>{!reviewed ? <p>Run review to see findings.</p> : findings.length ? findings.map(({ part, finding }, index) => <article key={index}><a href={`#document-part-${part}`} onClick={() => setFocused(part)}>{document.parts[part].label}</a> · {finding.category}<blockquote>{finding.excerpt}</blockquote><p>{finding.explanation}</p><small>{finding.sourceId} · v{finding.sourceVersion} · {finding.evidenceStatus}</small><p>Suggested action: {finding.suggestion}</p></article>) : <p>No rule findings. Human review is still required; these checks cannot establish that all claims are true.</p>}</section></div>
-      <section><h2>3. Hand off for human approval</h2><p>Send extracted text to an authenticated workspace. This saves a new draft with its page or paragraph locations; the original file stays on your device. Workspace drafts support up to 10,000 characters.</p>
-        {document.parts.map(p => p.text).join("\n\n").length > 10000 && <div className="notice" style={{ background: "#fff2d6", border: "1px solid #d4a34b", padding: "10px", borderRadius: "6px", margin: "10px 0" }}>⚠️ Extracted text is {document.parts.map(p => p.text).join("\n\n").length.toLocaleString()} characters, exceeding the 10,000-character shared workspace limit. <button type="button" onClick={() => {
-          let accumulated = 0; const newParts: { label: string; text: string }[] = [];
-          for (const part of document.parts) {
-            const added = (newParts.length ? 2 : 0) + part.text.length;
-            if (accumulated + added <= 10000) { newParts.push(part); accumulated += added; }
-            else { const remaining = 10000 - accumulated - (newParts.length ? 2 : 0); if (remaining > 0) newParts.push({ label: part.label, text: part.text.slice(0, remaining) }); break; }
-          }
-          setDocument({ ...document, parts: newParts, warnings: [...document.warnings, "Text was truncated to 10,000 characters for workspace handoff."] }); setReviewed(false); setFindings([]); setMessage("Document truncated to 10,000 characters for workspace handoff.");
-        }}>Truncate to first 10,000 characters</button></div>}
-        <button disabled={busy} onClick={async () => { setBusy(true); try { const data = await shared(); const options = data.workspaces?.filter(w => w.role !== "reviewer") || []; setWorkspaces(options); setWorkspaceId(options[0]?.id || ""); if (!options.length) setMessage("Create a workspace first, then return here to hand off your document."); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); } }}>Load my shared workspaces</button>
-        {workspaces && <><label>Destination workspace<select value={workspaceId} onChange={e => setWorkspaceId(e.target.value)}>{workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label><button disabled={busy || !workspaceId || document.parts.map(p => p.text).join("\n\n").length > 10000} onClick={async () => { setBusy(true); try { await shared({ action: "createDraft", workspaceId, title: document.name.slice(0, 100), body: document.parts.map(p => p.text).join("\n\n"), document: documentPayload() }); setMessage("Shared draft created. Open Shared workspaces to submit it for review."); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); } }}>Create shared draft ({document.parts.map(p => p.text).join("\n\n").length.toLocaleString()} / 10,000 chars)</button></>}
-        <a className="button" href="/workspace">Open shared workspaces</a>
-      </section>
-    </>}
-    <section>
-      <h2>Text contrast check & accessibility compliance</h2>
-      <p>Check an explicit foreground/background pair against WCAG 2.2 contrast thresholds. This does not infer complex image backgrounds or certify complete accessibility.</p>
-      <div style={{ display: "flex", gap: "20px", flexWrap: "wrap", alignItems: "center" }}>
-        <label>Text colour ({foreground})<input type="color" value={foreground} onChange={e => setForeground(e.target.value)} /></label>
-        <label>Background colour ({background})<input type="color" value={background} onChange={e => setBackground(e.target.value)} /></label>
-        {ratio < 4.5 && <button type="button" onClick={autoFixContrast} style={{ marginTop: "16px" }}>✨ Auto-Adjust to Compliant 4.5:1 Contrast</button>}
-      </div>
-      <p style={{ background, color: foreground, padding: 18, borderRadius: 8, fontSize: "16px", fontWeight: 600, border: "1px solid #cbdad2", margin: "14px 0" }}>
-        Brand message preview: "NovaDesk helps teams review content before publication."
-      </p>
-      <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", margin: "12px 0" }}>
-        <strong>Contrast {ratio.toFixed(2)}:1</strong>
-        <span style={{ padding: "4px 10px", borderRadius: "14px", fontSize: "12px", fontWeight: 600, background: ratio >= 4.5 ? "#edf5ec" : "#fef1f1", color: ratio >= 4.5 ? "#225c2e" : "#8c2828", border: `1px solid ${ratio >= 4.5 ? "#82b388" : "#d99b9b"}` }}>
-          WCAG AA Normal Text (4.5:1): {ratio >= 4.5 ? "PASS ✅" : "FAIL ❌"}
-        </span>
-        <span style={{ padding: "4px 10px", borderRadius: "14px", fontSize: "12px", fontWeight: 600, background: ratio >= 3.0 ? "#edf5ec" : "#fef1f1", color: ratio >= 3.0 ? "#225c2e" : "#8c2828", border: `1px solid ${ratio >= 3.0 ? "#82b388" : "#d99b9b"}` }}>
-          WCAG AA Large Text (3.0:1): {ratio >= 3.0 ? "PASS ✅" : "FAIL ❌"}
-        </span>
-        <span style={{ padding: "4px 10px", borderRadius: "14px", fontSize: "12px", fontWeight: 600, background: ratio >= 7.0 ? "#edf5ec" : "#f8f9f6", color: ratio >= 7.0 ? "#225c2e" : "#6c7b72", border: `1px solid ${ratio >= 7.0 ? "#82b388" : "#cad7ca"}` }}>
-          WCAG AAA Enhanced (7.0:1): {ratio >= 7.0 ? "PASS ✅" : "NOT MET"}
-        </span>
-      </div>
-    </section>
-  </main>;
+  return (
+    <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-main)] font-sans">
+      <header className="bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] px-6 sm:px-10 h-14 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-4">
+          <a href="/" className="font-serif font-semibold text-[var(--text-main)] no-underline flex items-center gap-2">
+            <svg className="w-4 h-4 text-[var(--accent-primary)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="m9 12 2 2 4-4" />
+            </svg>
+            BrandCheck
+          </a>
+          <span className="text-[var(--text-subtle)]">/</span>
+          <span className="text-[var(--text-muted)] font-medium">Document review desk</span>
+        </div>
+        <div className="flex items-center gap-4 text-[var(--text-muted)]">
+          <a href="/workspace" className="hover:text-[var(--text-main)] underline">Shared workspaces</a>
+          <a href="/example" className="hover:text-[var(--text-main)] underline">Guest example</a>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-6 py-10">
+        <div className="mb-8">
+          <p className="text-xs uppercase tracking-wider text-[var(--text-subtle)] font-medium mb-1">Local Processing</p>
+          <h1 className="text-3xl font-serif font-normal text-[var(--text-main)] tracking-tight">
+            Document review and visual checks
+          </h1>
+          <p className="text-xs text-[var(--text-muted)] mt-2 max-w-2xl leading-relaxed">
+            Extract text from PDF, DOCX, text or Markdown files with location-linked findings mapped directly to pages or paragraphs. Text parsing and rule execution run entirely on your device.
+          </p>
+        </div>
+
+        {/* Section 1: Import Document */}
+        <section className="p-6 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] mb-6 space-y-4">
+          <h2 className="text-lg font-serif text-[var(--text-main)]">1. Import content</h2>
+          <label className="text-xs text-[var(--text-muted)] block">
+            PDF, DOCX, TXT or Markdown (up to 15 MB)
+            <input
+              ref={input}
+              type="file"
+              accept=".pdf,.docx,.txt,.md"
+              disabled={busy}
+              onChange={e => importFile(e.target.files?.[0])}
+              className="mt-1 block w-full text-xs border border-[var(--border-strong)] rounded-[var(--radius-sm)] p-2 bg-[var(--bg-surface)]"
+            />
+          </label>
+          <div className="flex items-center gap-3">
+            <button
+              disabled={busy}
+              onClick={() => {
+                setDocument({
+                  name: "Example launch document",
+                  parts: [
+                    { label: "Page 1", text: "NovaDesk is designed to simplify daily work." },
+                    { label: "Page 2", text: "Flowly guarantees 2x productivity for every team." }
+                  ],
+                  warnings: ["This is a built-in sample document, not an uploaded PDF."]
+                });
+                setReviewed(false);
+                setFindings([]);
+                setMessage("");
+              }}
+              className="h-8 px-3 text-xs font-medium rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-surface-raised)] text-[var(--text-main)] hover:bg-[var(--bg-surface-sunken)] transition-colors"
+            >
+              Load two-page sample
+            </button>
+          </div>
+          <small className="text-[11px] text-[var(--text-subtle)] block">
+            Supports up to 40 PDF pages, 400 DOCX paragraphs and 80,000 extracted characters. Scanned PDFs without a text layer require OCR and are not supported.
+          </small>
+        </section>
+
+        {busy && <p role="status" className="text-xs text-[var(--text-muted)] italic my-2">Processing document or workspace request...</p>}
+        {message && <div role="status" className="product-notice">{message}</div>}
+
+        {document && (
+          <>
+            <div className="p-4 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] mb-6 flex flex-wrap items-center justify-between gap-4 text-xs">
+              <div>
+                <strong className="font-mono text-[var(--text-main)]">{document.name}</strong> · {document.parts.length} sections ({document.parts.map(p => p.text).join("\n\n").length.toLocaleString()} characters)
+                <span className="text-[var(--text-subtle)] block mt-0.5">Evaluated against {defaultPolicy.name}</span>
+              </div>
+              <button
+                onClick={review}
+                className="h-8 px-4 text-xs font-medium rounded-[var(--radius-sm)] bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary-hover)] transition-colors"
+              >
+                2. Review extracted text
+              </button>
+            </div>
+
+            {document.warnings.map((warning, i) => (
+              <div className="product-notice my-2" key={i}>{warning}</div>
+            ))}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {/* Left Column: Extracted Text */}
+              <section className="p-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-4">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
+                  Extracted text sections
+                </h3>
+                {document.parts.map((part, index) => (
+                  <article
+                    id={`document-part-${index}`}
+                    className={`p-3 rounded-[var(--radius-sm)] border transition-all ${focused === index ? "border-[var(--accent-primary)] ring-1 ring-[var(--accent-primary)]" : "border-[var(--border-subtle)] bg-[var(--bg-surface-sunken)]"}`}
+                    key={index}
+                  >
+                    <label className="text-xs font-mono text-[var(--text-muted)] block mb-1">
+                      {part.label}
+                      <textarea
+                        rows={5}
+                        value={part.text}
+                        onChange={e => {
+                          setDocument({
+                            ...document,
+                            parts: document.parts.map((p, i) => i === index ? { ...p, text: e.target.value } : p)
+                          });
+                          setReviewed(false);
+                          setFindings([]);
+                        }}
+                        maxLength={10000}
+                        className="w-full mt-1 p-2 text-xs font-mono border border-[var(--border-strong)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] text-[var(--text-main)]"
+                      />
+                    </label>
+                  </article>
+                ))}
+              </section>
+
+              {/* Right Column: Explained Findings */}
+              <section className="p-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
+                    Explained findings {reviewed ? `(${findings.length})` : ""}
+                  </h3>
+                </div>
+                {!reviewed ? (
+                  <p className="text-xs text-[var(--text-subtle)]">Run review to inspect source-grounded findings.</p>
+                ) : findings.length ? (
+                  findings.map(({ part, finding }, index) => (
+                    <article className="product-finding" key={index}>
+                      <div className="flex items-center justify-between">
+                        <a
+                          href={`#document-part-${part}`}
+                          onClick={() => setFocused(part)}
+                          className="font-mono text-xs font-semibold underline text-[var(--text-main)]"
+                        >
+                          {document.parts[part].label}
+                        </a>
+                        <span className="editorial-badge">{finding.category}</span>
+                      </div>
+                      <blockquote>{finding.excerpt}</blockquote>
+                      <p>{finding.explanation}</p>
+                      <small className="text-[11px] text-[var(--text-subtle)]">
+                        {finding.sourceId} v{finding.sourceVersion} · {finding.evidenceStatus}
+                      </small>
+                      <p className="text-xs text-[var(--text-muted)] font-medium mt-1">Suggested action: {finding.suggestion}</p>
+                    </article>
+                  ))
+                ) : (
+                  <p className="text-xs text-[var(--text-muted)]">No rule findings detected. Human review is still required before publication.</p>
+                )}
+              </section>
+            </div>
+
+            {/* Section 3: Workspace Handoff */}
+            <section className="p-6 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] mb-8 space-y-4">
+              <h2 className="text-lg font-serif text-[var(--text-main)]">3. Hand off for human approval</h2>
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                Send extracted text to an authenticated workspace. This saves a new draft with its section location map; the original file stays on your device. Workspace drafts support up to 10,000 characters.
+              </p>
+
+              {document.parts.map(p => p.text).join("\n\n").length > 10000 && (
+                <div className="p-3 rounded-[var(--radius-sm)] border border-[var(--status-warn-border)] bg-[var(--status-warn-bg)] text-xs text-[var(--status-warn-text)] space-y-2">
+                  <p>Extracted text is {document.parts.map(p => p.text).join("\n\n").length.toLocaleString()} characters, exceeding the 10,000-character shared workspace limit.</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      let accumulated = 0;
+                      const newParts: { label: string; text: string }[] = [];
+                      for (const part of document.parts) {
+                        const added = (newParts.length ? 2 : 0) + part.text.length;
+                        if (accumulated + added <= 10000) {
+                          newParts.push(part);
+                          accumulated += added;
+                        } else {
+                          const remaining = 10000 - accumulated - (newParts.length ? 2 : 0);
+                          if (remaining > 0) newParts.push({ label: part.label, text: part.text.slice(0, remaining) });
+                          break;
+                        }
+                      }
+                      setDocument({
+                        ...document,
+                        parts: newParts,
+                        warnings: [...document.warnings, "Text was truncated to 10,000 characters for workspace handoff."]
+                      });
+                      setReviewed(false);
+                      setFindings([]);
+                      setMessage("Document truncated to 10,000 characters for workspace handoff.");
+                    }}
+                    className="h-7 px-3 text-xs font-medium rounded-[var(--radius-sm)] border border-[var(--status-warn-border)] bg-white text-[var(--status-warn-text)] hover:bg-[var(--bg-surface-raised)]"
+                  >
+                    Truncate to first 10,000 characters
+                  </button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      const data = await shared();
+                      const options = data.workspaces?.filter(w => w.role !== "reviewer") || [];
+                      setWorkspaces(options);
+                      setWorkspaceId(options[0]?.id || "");
+                      if (!options.length) setMessage("Create a workspace first, then return here to hand off your document.");
+                    } catch (error) {
+                      setMessage((error as Error).message);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className="secondary h-8 px-3 text-xs"
+                >
+                  Load shared workspaces
+                </button>
+
+                {workspaces && (
+                  <>
+                    <select
+                      value={workspaceId}
+                      onChange={e => setWorkspaceId(e.target.value)}
+                      className="text-xs h-8 px-2 border border-[var(--border-strong)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]"
+                    >
+                      {workspaces.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                    </select>
+
+                    <button
+                      disabled={busy || !workspaceId || document.parts.map(p => p.text).join("\n\n").length > 10000}
+                      onClick={async () => {
+                        setBusy(true);
+                        try {
+                          await shared({
+                            action: "createDraft",
+                            workspaceId,
+                            title: document.name.slice(0, 100),
+                            body: document.parts.map(p => p.text).join("\n\n"),
+                            document: documentPayload()
+                          });
+                          setMessage("Shared draft created. Open Shared workspaces to submit it for review.");
+                        } catch (error) {
+                          setMessage((error as Error).message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                      className="h-8 px-3 text-xs"
+                    >
+                      Create shared draft ({document.parts.map(p => p.text).join("\n\n").length.toLocaleString()} / 10,000 chars)
+                    </button>
+                  </>
+                )}
+                <a href="/workspace" className="text-xs text-[var(--accent-primary)] font-medium underline ml-auto">
+                  Open shared workspaces &rarr;
+                </a>
+              </div>
+            </section>
+          </>
+        )}
+
+        {/* Section 4: WCAG 2.2 Text Contrast & Accessibility */}
+        <section className="p-6 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-4">
+          <h2 className="text-lg font-serif text-[var(--text-main)]">
+            Text contrast check & accessibility compliance
+          </h2>
+          <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+            Verify an explicit foreground and background color pair against WCAG 2.2 contrast ratios. This does not infer complex background images or certify overall accessibility.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-6 pt-2">
+            <label className="text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
+              Text: <span className="font-semibold">{foreground}</span>
+              <input
+                type="color"
+                value={foreground}
+                onChange={e => setForeground(e.target.value)}
+                className="w-8 h-8 rounded border border-[var(--border-strong)] cursor-pointer"
+              />
+            </label>
+            <label className="text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
+              Background: <span className="font-semibold">{background}</span>
+              <input
+                type="color"
+                value={background}
+                onChange={e => setBackground(e.target.value)}
+                className="w-8 h-8 rounded border border-[var(--border-strong)] cursor-pointer"
+              />
+            </label>
+            {ratio < 4.5 && (
+              <button
+                type="button"
+                onClick={autoFixContrast}
+                className="secondary h-8 px-3 text-xs"
+              >
+                Auto-adjust to 4.5:1 contrast
+              </button>
+            )}
+          </div>
+
+          <div
+            style={{ backgroundColor: background, color: foreground }}
+            className="p-5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-sm font-medium my-4 leading-relaxed"
+          >
+            Brand preview sample: &ldquo;NovaDesk helps teams review content before publication.&rdquo;
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
+            <span className="font-mono font-semibold text-[var(--text-main)]">
+              Contrast {ratio.toFixed(2)}:1
+            </span>
+            <span className={`editorial-badge ${ratio >= 4.5 ? "status-approved" : "status-danger"}`}>
+              WCAG AA Normal Text (4.5:1): {ratio >= 4.5 ? "Pass" : "Fail"}
+            </span>
+            <span className={`editorial-badge ${ratio >= 3.0 ? "status-approved" : "status-danger"}`}>
+              WCAG AA Large Text (3.0:1): {ratio >= 3.0 ? "Pass" : "Fail"}
+            </span>
+            <span className={`editorial-badge ${ratio >= 7.0 ? "status-approved" : "status-draft"}`}>
+              WCAG AAA Enhanced (7.0:1): {ratio >= 7.0 ? "Pass" : "Not met"}
+            </span>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
 }
