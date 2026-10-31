@@ -1097,7 +1097,7 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
                     >
                       Import TXT or Markdown draft
                     </button>
-                    <small>Read in this browser · up to 5,000 characters</small>
+                    <small>Read in this browser · up to 10,000 characters</small>
                     <input
                       ref={textFileInput}
                       type="file"
