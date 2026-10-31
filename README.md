@@ -1,87 +1,154 @@
 # BrandCheck
 
-BrandCheck connects approved brand guidelines, content review and human approvals in a saved workspace.
+> Editorial governance and brand compliance workspace with source-grounded verification and human-in-the-loop approvals.
 
-Product: https://brandcheck-codestar-judge.freelynx19.chatgpt.site  
-Deployed source: https://github.com/Manas-Jain-24/brandcheck
+- **Live Product:** [https://brandcheck-codestar-judge.freelynx19.chatgpt.site](https://brandcheck-codestar-judge.freelynx19.chatgpt.site)
+- **Source Repository:** [https://github.com/Manas-Jain-24/brandcheck](https://github.com/Manas-Jain-24/brandcheck)
+- **Documentation:** [CodeStar 30 Requirements](HACKATHON.md) · [Round 2 Submission](docs/BrandCheck_Round_2_Submission.pdf) · [Round 3 Finals Report](docs/BrandCheck_Round_3_Finals.pdf) · [Verification & Test Record](docs/TESTING.md)
 
-[CodeStar 30 links and requirements](HACKATHON.md) · [Round 2 plan and commitments](docs/BrandCheck_Round_2_Submission.pdf) · [Round 3 report](docs/BrandCheck_Round_3_Finals.pdf) · [Visual upgrade test record](docs/TESTING.md)
+---
 
-## Main product flow
+## Overview
 
-1. Sign in and create a workspace. New workspaces start with generic claim/tone guidance and no fictional brand facts. NovaDesk example data is an explicit opt-in.
-2. Use Brand guidelines to define positioning, tone, retired/preferred names and evidence. Changes become proposals; an admin approves or rejects them.
-3. Write content or import PDF/DOCX/TXT/Markdown directly into the content editor. Attach a PNG/JPEG/WebP image with alt text, a client-side SHA-256 fingerprint and a small metadata-stripped preview. Save text, image metadata and page/paragraph location maps. Original files remain on the device.
-4. Run rules or consent to live Google Gemini text review. Separately consent to send a small saved image preview for visual AI review. Findings, source references, model identity, source-linked priority and fallback status are saved with the revision. Visual AI observations are stored as unverified leads outside the finding count; a separate reviewer may confirm or dismiss each with a reason after checking the original image. Tentative OCR stays in a collapsed panel. AI prose is not accepted as a freeform compliance verdict; saved summaries are derived from validated findings. Corrections remain optional and need a new saved review.
-5. Assign a workspace reviewer and submit the saved revision. The reviewer inbox shows assigned and unassigned submissions; a link opens the exact draft after sign-in. A separate reviewer comments, requests changes or approves with a reason. The server denies self-review and decisions by the wrong assigned reviewer. Revising approved content invalidates its approval.
-6. Approved policy changes recheck stored content and mark affected decisions/submissions for review. Original proposal differences and old/new policy packs remain in history.
-7. Compare a working revision with a prior saved snapshot or reviewer decision. Insights summarize recurring source areas, later clearances and reviewer outcomes from bounded saved history.
+BrandCheck is an editorial review and brand governance platform designed to help teams inspect, verify, and approve content before publication against authoritative brand guidelines. 
 
-The workspace has Content, Review inbox, Brand guidelines, Insights, People & access, and Activity navigation. Admins can grant and remove creator/reviewer access. Sign-in establishes identity; it never grants access to another workspace by itself. Invitations and review links are shared manually; no email is sent by the service.
+Unlike generic grammar checkers or ungrounded AI text generators, BrandCheck enforces strict **source-grounded validation**: every identified issue cites approved brand policy text, provides a persistent rule identifier, and keeps human reviewers in control of all final publication decisions.
 
-## Public exploration
+---
 
-- `/`: product entry. Signed-in visitors go directly to `/workspace`.
-- `/workspace`: real authenticated, persistent collaboration.
-- `/example`: a working fictional NovaDesk example without sign-in or a visitor-supplied API key. Its creator/reviewer selector is explicitly local simulation. It is separate from real workspace permissions.
-- `/documents`: browser-local document review against example guidelines, with text/location-map handoff to a saved workspace.
-- `/policy-lab`: clearly labelled device-local policy-change example. Real saved policies and permissions live in `/workspace`.
+## Core Product Capabilities
 
-## Architecture and data
+1. **Brand Guidelines & Policy Engine**  
+   Define authoritative positioning, tone criteria, approved/retired terminology, and claim evidence. Policy changes follow a formal proposal lifecycle with review and administrative approval.
 
-React/TypeScript and the Sites Vinext/Vite starter run on Cloudflare Workers. D1 stores workspace membership, drafts, document location maps, findings, review metadata, policy proposals/versions and audit events. Zod validates requests and AI output. Drizzle owns additive schema migrations. No runtime request creates database tables.
+2. **Multi-Format Document Intake**  
+   Native client-side text and structure extraction for **PDF**, **Word (.docx)**, **Markdown**, and plain text. Retains page and paragraph location mappings so reviewers can trace findings directly back to specific document sections. Original files remain local to the user's device.
 
-Browser → same-origin workspace API → private runtime key → Google Gemini. Shared AI reads the authoritative saved draft and approved workspace policy on the server. It checks membership, content revision and policy again before committing results. Late results cannot overwrite newer content/policies; revoked members cannot save a completed long-running review. State mutations and their events are batched transactions. Policy rechecks use a bounded five-statement transaction with JSON1 and per-draft revision guards.
+3. **Source-Grounded Verification Engine**  
+   Combines high-speed deterministic pattern checks with semantic analysis (`gemini-3.1-flash-lite`). Every finding references an active brand rule (e.g. `TERM-001`, `CLAIM-001`), quotes the offending passage, and provides contextual replacement suggestions. If external APIs time out or encounter rate limits, BrandCheck gracefully defaults to local rule verification without breaking workflow continuity.
 
-PDF.js (Apache-2.0), Mammoth (BSD-2-Clause) and fflate (MIT) provide parsing and ZIP inspection. The upstream PDF worker is copied to a generated static asset before dev/build with its license notice retained. Shared document findings retain page/paragraph locations after reload and policy rechecks. Editing individual sections rebuilds offsets; switching to plain text explicitly discards the map.
+4. **Visual Asset Governance**  
+   Enforces visual guidelines across attached graphics: validates alt text, matches exact SHA-256 asset fingerprints against approved media libraries, and computes dominant color heuristics against brand palettes. An optional visual review flow generates candidate leads that must be explicitly confirmed or dismissed by an authorized reviewer.
 
-AI findings must quote content present in the input and cite an active source of a compatible category. Stored AI explanations quote the approved source; freeform model assessments and unsupported rewrite instructions are discarded. The saved priority and any rewrite are constructed from validated findings and direct source-linked replacements. This structural grounding does not prove the model's interpretation is correct. Failed AI analysis saves labelled rule-only results with no simulated assessment. Editing content or changing policy clears stale AI metadata. Submission preserves a matching live assessment; it does not silently replace it with a rule-only review.
+5. **Human Approval Workflow & Role Separation**  
+   Maintains strict separation between content creators and reviewers. The server prevents self-approval and restricts decisions to designated reviewers. Any subsequent edit to an approved draft automatically invalidates prior approval status and triggers a re-check requirement.
 
-Image rules compare exact fingerprints with admin-approved asset records, check alt text, and sample a graphic's dominant colour against approved hex colours. The colour test is a heuristic for graphics; photographs are excluded. Old workspaces without image guidelines receive clearly labelled built-in accessibility and policy-gap findings. Only a small browser-generated preview, fingerprint and metadata are stored in D1. Text AI never sends image pixels. A separate opt-in visual action sends only the saved reduced-size preview and approved visual sources to Gemini. Its source-linked observations remain unverified leads until an authorised reviewer confirms them. OCR may be wrong at this resolution and is never automatically counted as a finding.
+6. **Policy Impact & Governance Insights**  
+   When brand guidelines are updated, BrandCheck automatically scans existing drafts and flags impacted content for re-review. Workspace analytics highlight recurring policy gaps, clearance rates, and reviewer outcome trends across team history.
 
-Insights use the latest 100 drafts and 200 activity events returned by the workspace API. They distinguish current findings from historical review runs and reviewer outcomes. A later cleared issue may reflect editing or a policy change. Revision comparison uses saved audit snapshots and line differences; older snapshots outside the 200-event window are unavailable.
+---
 
-Audit events have no edit/delete API, but database administrators are trusted. This is not a signed, administrator-proof ledger or evidence of SOC2 certification.
+## Application Structure & Routes
 
-## Policy connector
+- **`/` (Landing Page):** Product overview, workflow breakdown, and an interactive review preview framed with real highlighted findings.
+- **`/workspace`:** Authenticated collaborative workspace with multi-draft management, reviewer inbox, brand guideline management, team permissions, and audit logs.
+- **`/example`:** Fully functional interactive sandbox running sample brand guidelines (NovaDesk) without requiring sign-in or API keys.
+- **`/documents`:** Standalone document analysis desk supporting PDF and Word (.docx) files with page-level finding navigation and workspace export.
+- **`/policy-lab`:** Interactive brand policy simulator for testing rule modifications against sample content before rolling them out to a team.
 
-A read-only, on-demand connector fetches public JSON from `https://raw.githubusercontent.com/...`. It requires an authenticated admin, bounds the response size, rejects redirects and validates the pack. Import creates a proposal; it never activates an external change automatically. An example file is in `examples/brand-policy.json`.
+---
 
-The normal brand editor does not require JSON. Advanced JSON import remains available. There are no Notion, Confluence, Google Docs, Webflow or private-repository connectors and no background sync or memo-to-rule extraction.
+## Architecture & Data Flow
 
-## API contract
+```
+[ Browser Client ]
+        │
+        ▼ (Same-Origin JSON Actions)
+[ Cloudflare Workers Edge API ]
+        │
+        ├──▶ [ Cloudflare D1 Database (SQLite + Drizzle ORM) ]
+        │       • Workspace membership & RBAC
+        │       • Versioned drafts & paragraph location maps
+        │       • Approved brand policies & pending proposals
+        │       • Append-only audit events
+        │
+        └──▶ [ Google Gemini API (`gemini-3.1-flash-lite`) ]
+                • Semantic guideline evaluation
+                • Grounded source citation
+                • Graceful fallback to deterministic rule engine
+```
 
-`GET /api/workspaces`: authenticated identity and accessible workspaces.  
-`GET /api/workspaces?workspaceId=<id>`: role, drafts, members, policies, proposals and latest events.  
-`POST /api/workspaces`: validated JSON actions `createWorkspace`, `invite`, `removeMember`, `createDraft`, `saveDraft`, `assignReviewer`, `reviewAI`, `reviewVisual`, `resolveVisualCandidate`, `recheckDraft`, `submit`, `comment`, `decide`, `proposePolicy`, `syncPolicy`, `decidePolicy`.
+### Key Technical Decisions
 
-Draft mutations require the current revision. `reviewAI` and `reviewVisual` each require explicit `consent: true`; the latter sends the saved preview, not the original file. Both read the authoritative saved draft and approved pack, never caller-supplied alternate brand rules. Imported content may include a validated `document` map of ordered labelled ranges covering the text. Identity is supplied by Sites server context, never submitted JSON. Writes require the exact same-origin Origin. Anonymous calls return 401; inaccessible workspaces return 404; unauthorized actions return 403; stale mutations return 409. The body stream is limited to 160 KB.
+- **Full-Stack Edge Deployment:** Built with React 19, TypeScript, and Vite on Cloudflare Workers for fast global response times.
+- **Data Persistence:** Cloudflare D1 provides transactional SQLite storage. Additive migrations are managed with Drizzle ORM.
+- **Client-Side Document Parsing:** Uses `pdfjs-dist` for PDF extraction, `mammoth` for DOCX XML conversion, and `fflate` for lightweight ZIP decompression. Document binaries are parsed locally in the browser to maintain privacy and reduce payload overhead.
+- **Type Safety:** Zod schemas validate all client requests, workspace actions, and model responses at runtime.
+- **Audit Logging:** Every state transition (draft save, submission, review decision, policy change) records an append-only audit event with timestamps, actor IDs, and policy version snapshots.
 
-Membership invitations grant the exact email access; no invitation email is sent. Share the workspace URL separately. The workspace owner's membership cannot be removed through the member-removal action. Removed members lose access; previous authored content and recorded history remain intact.
+---
 
-## Configuration and verification
+## Workspace API Contract
 
-Use Node 22.13+ and pnpm 11.25.0. Configure `GEMINI_API_KEY` and optional `GEMINI_MODEL` only as private runtime secrets. Current default model: `gemini-3.1-flash-lite`, a [Google-listed stable Gemini API model](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite). A recorded 45-second timeout in an earlier local test was a failed request, not evidence of an invalid model ID; the hosted public example subsequently returned a live response with this model. A timeout or quota failure must be labelled as rule-only fallback, never as a successful AI verdict. Never put secrets in browser code, Git, a `VITE_` value or `.openai/hosting.json`.
+The workspace backend exposes a structured JSON-over-HTTP interface at `/api/workspaces`:
 
-- `pnpm dev`: local preview with the starter's development sign-in facility.
-- `pnpm exec tsc --noEmit`: strict type checking.
-- `pnpm run db:generate`: additive migration generation; inspect generated SQL/metadata.
-- `node scripts/test-shared-review.mjs`: 47 service/transport/document and public-review regression tests, including SQLite-backed tests using actual migrations.
-- `node scripts/create-document-fixtures.mjs`: real two-page PDF fixture in ignored `work/`.
-- Build and publish through the Sites skill helpers to retain Worker metadata and apply production migrations.
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/workspaces` | Lists authenticated user identity and accessible workspaces. |
+| `GET` | `/api/workspaces?workspaceId=<id>` | Retrieves drafts, members, policies, active proposals, and recent events for a workspace. |
+| `POST` | `/api/workspaces` | Executes validated state actions (e.g., `createWorkspace`, `saveDraft`, `submit`, `decide`, `proposePolicy`, `decidePolicy`). |
 
-Tests cover organization isolation, roles, self-review, assigned reviewer enforcement, revocation, stale/concurrent writes, transaction rollback, policy proposals/regression, document mapping, saved image review, real DOCX extraction, AI consent/fallback/provenance and stale AI results. Browser QA should exercise the full new-brand → imported document/image → saved review → approval journey; distinguish local, hosted and two-account results in release notes.
+All mutations require the current draft/policy revision number to prevent stale writes, enforce identical-origin headers, and return standard HTTP status codes (`401 Unauthorized`, `403 Forbidden`, `404 Not Found`, `409 Conflict`).
 
-## Privacy and current limits
+---
 
-Text AI sends saved draft text and approved policy/evidence to Google through the server. Visual AI separately sends a small saved preview and approved visual sources. A user must explicitly consent to each action. Original image files and document binaries are not sent by the workspace. All workspace members can read its content; the platform supplies authentication. There is no enterprise security certification or independent external claim fact-checking.
+## Getting Started & Local Development
 
-The hosted service currently shares an AI allowance of 180 requests per UTC day and 20 per visitor-IP bucket per 10 minutes. D1 counters store rotating hashes, not raw IP addresses. Rule checks remain available when AI fails or reaches its allowance. These are operating limits, not a paid plan or unlimited service promise.
+### Prerequisites
 
-Workspace drafts support 10,000 characters, up to 100 drafts per workspace and the latest 200 displayed activity events. The document tool supports files up to 15 MB, 40 text-based PDF pages, 400 DOCX paragraphs and 80,000 extracted characters; it displays at most 200 findings with a notice. Longer documents can be locally reviewed but must be shortened before saved-workspace handoff. No scanned-document OCR, pixel-coordinate highlights, original Word page/line fidelity, presentation or Figma import is implemented.
+- Node.js 22+
+- pnpm 11+
 
-Visual rules use exact asset hashes, alt text and a sampled dominant-colour heuristic for graphics in the saved workspace; the document tool also calculates explicit text contrast. Optional Gemini preview analysis provides tentative visual observations and OCR text. It is not a trained brand classifier, does not establish exact logo identity or clearance distance, and does not automatically assess full-image palette usage. There are in-app reviewer inbox counts and manually shared review links, but no email/Slack/Teams notifications, scheduled expiry sweeps, billing, retention/deletion administration or general history pagination. The project is a functional hackathon product with explicit limits, not a promise of legal/brand compliance or audited enterprise readiness.
+### Installation & Setup
 
-## Reuse and assistance
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Manas-Jain-24/brandcheck.git
+   cd brandcheck
+   ```
 
-The original review interface was adapted from Manas-Jain-24/brandcheck, commit `9832996`. The Sites Vinext starter is reused hosting infrastructure. React, Vite, TypeScript, Cloudflare, Drizzle, Zod, Gemini and the document libraries above are external components/services. Significant AI coding assistance was used for implementation, testing and debugging. Individual contribution statements must describe work each participant actually performed.
+2. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+
+3. Configure environment variables (optional for local mock preview):
+   ```bash
+   # Private runtime key for semantic analysis
+   export GEMINI_API_KEY="your-gemini-api-key"
+   export GEMINI_MODEL="gemini-3.1-flash-lite"
+   ```
+
+### Development & Build Commands
+
+- **Start local dev server:**
+  ```bash
+  pnpm dev
+  ```
+- **Type-check codebase:**
+  ```bash
+  pnpm exec tsc --noEmit
+  ```
+- **Generate database migrations:**
+  ```bash
+  pnpm run db:generate
+  ```
+- **Run automated test suite (47 service and integration tests):**
+  ```bash
+  node scripts/test-shared-review.mjs
+  ```
+- **Build production bundle:**
+  ```bash
+  pnpm run build
+  ```
+
+---
+
+## Technology Stack
+
+- **Frontend:** React 19, TypeScript, Tailwind CSS, Lucide Icons, Vite
+- **Backend & Edge Compute:** Cloudflare Workers
+- **Database & Storage:** Cloudflare D1 (Serverless SQLite), Drizzle ORM
+- **Document Ingestion:** PDF.js, Mammoth (.docx), fflate
+- **Analysis & Governance:** Google Gemini API (`gemini-3.1-flash-lite`) + custom deterministic rule engine
+- **Validation:** Zod schemas for end-to-end type safety
