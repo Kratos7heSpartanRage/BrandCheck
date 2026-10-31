@@ -45,7 +45,7 @@ The event page says no social post or video is required unless later stage-speci
 
 ## BrandCheck implementation status
 
-The central saved-workspace path is implemented: create workspace and policy, save content, run rule or consented AI review, inspect source-linked findings, submit, and obtain a separate human decision. The original three promised improvements are source-grounded AI conclusions, saved image/asset governance, and a real reviewer handoff. Additional product work includes governance insights, saved revision comparison and reviewer-verified AI visual leads.
+The central saved-workspace path is implemented: create workspace and policy, save content, run rule or consented AI review, inspect source-linked findings, submit, and obtain a separate human decision. The [Round 2 submission PDF](docs/BrandCheck_Round_2_Submission.pdf) promised three Round 3 improvements: grounded semantic review, real shared review, and PDF/DOCX document intake. These are the three commitments described in the [finals PDF](docs/BrandCheck_Round_3_Finals.pdf). Additional product work includes visual governance, public GitHub policy import, atomic policy regression, governance insights, saved revision comparison and reviewer-verified AI visual leads.
 
 - [Architecture, stack, APIs, privacy and limits](README.md)
 - [Latest verification record](docs/TESTING.md)
