@@ -1307,32 +1307,6 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
                         </div>
                       )}
                     </div>
-                    {state.assessment.suggestedRewrite &&
-                      state.persona === "creator" &&
-                      state.status !== "awaiting" && (
-                        <div className="suggested-full-rewrite">
-                          <div className="rewrite-header">
-                            <small>DIRECT SOURCE-LINKED REPLACEMENTS — REVIEW BEFORE USE</small>
-                            <button
-                              type="button"
-                              className="subtle-button apply-rewrite-btn"
-                              onClick={() => {
-                                updateBody({
-                                  text: state.assessment!.suggestedRewrite,
-                                });
-                                setToast(
-                                  "Source-linked replacements applied. Run review again and verify the wording and evidence.",
-                                );
-                              }}
-                            >
-                              Apply source-linked replacements ↗
-                            </button>
-                          </div>
-                          <blockquote className="rewrite-text">
-                            {state.assessment.suggestedRewrite}
-                          </blockquote>
-                        </div>
-                      )}
                   </div>
                 )}
                 {!currentReview && (
