@@ -383,13 +383,53 @@ export default function WorkspaceProduct() {
                             </details>
                           )}
                           {review.assessment && (
-                            <div className="mt-3 pt-2 border-t border-[var(--border-subtle)]">
-                              <p className="text-xs text-[var(--text-main)]">{review.assessment.summary}</p>
-                              <small className="text-xs font-medium text-[var(--text-muted)]">Source-linked priority: {review.assessment.riskLevel}</small>
+                            <div className="workspace-assessment-card">
+                              <div className="workspace-assessment-top">
+                                <span className={`ws-risk-badge ws-risk-${review.assessment.riskLevel.toLowerCase()}`}>
+                                  ● {review.assessment.riskLevel} Risk Exposure
+                                </span>
+                                <div className="ws-score-box">
+                                  <span>Compliance Score:</span>
+                                  <span className={`ws-score-val ${review.assessment.score < 50 ? "score-low" : review.assessment.score < 80 ? "score-med" : "score-high"}`}>
+                                    {review.assessment.score}/100
+                                  </span>
+                                </div>
+                              </div>
+                              <p className="text-xs text-[var(--text-main)] leading-relaxed">{review.assessment.summary}</p>
+                              {(review.assessment.claimRiskNote || review.assessment.toneRiskNote) && (
+                                <div className="ws-assessment-breakdown">
+                                  {review.assessment.claimRiskNote && (
+                                    <div><strong>📊 Claims:</strong> {review.assessment.claimRiskNote}</div>
+                                  )}
+                                  {review.assessment.toneRiskNote && (
+                                    <div><strong>🎙 Voice & Tone:</strong> {review.assessment.toneRiskNote}</div>
+                                  )}
+                                </div>
+                              )}
                               {editable && review.assessment.suggestedRewrite && (
-                                <button className="secondary text-xs h-7 px-2 mt-2" disabled={busy} onClick={() => { if (window.confirm("Apply source-linked replacements? Document location mapping will be cleared. Save and review new revision before approval.")) { setBody(review.assessment!.suggestedRewrite); setDocument(null); } }}>
-                                  Apply source-linked rewrite
-                                </button>
+                                <div className="ws-rewrite-box">
+                                  <div className="ws-rewrite-header">
+                                    <small className="text-[11px] font-semibold text-[var(--accent-primary)] uppercase tracking-wide">
+                                      Compliant Full Rewrite
+                                    </small>
+                                    <button
+                                      type="button"
+                                      className="secondary text-xs h-6 px-2 font-medium"
+                                      disabled={busy}
+                                      onClick={() => {
+                                        if (window.confirm("Apply compliant rewrite? This will update your editor text with the source-grounded compliant version.")) {
+                                          setBody(review.assessment!.suggestedRewrite);
+                                          setDocument(null);
+                                        }
+                                      }}
+                                    >
+                                      Apply Rewrite ↗
+                                    </button>
+                                  </div>
+                                  <blockquote className="ws-rewrite-text">
+                                    {review.assessment.suggestedRewrite}
+                                  </blockquote>
+                                </div>
                               )}
                             </div>
                           )}

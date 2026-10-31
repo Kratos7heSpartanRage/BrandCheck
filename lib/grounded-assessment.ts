@@ -3,7 +3,7 @@ import type { DraftAssessment, Finding, Source } from "../components/brandcheck/
 export function groundedAssessment(findings: Finding[], body: string): DraftAssessment {
   const attention = findings.filter(f => f.severity === "Needs attention");
   const citations = [...new Set(findings.map(f => `${f.sourceId} v${f.sourceVersion}`))];
-  const riskLevel = attention.length >= 3 ? "High" : attention.length ? "Moderate" : findings.length ? "Low" : "Low";
+  const riskLevel = attention.length >= 3 ? "Critical" : attention.length >= 2 ? "High" : attention.length ? "Moderate" : findings.length ? "Low" : "Low";
   const references = citations.length ? ` Approved sources: ${citations.join(", ")}.` : " No source-linked issues were found.";
   let suggestedRewrite = body;
   let changed = false;
@@ -31,12 +31,13 @@ const compatibleKinds: Record<Finding["category"], Source["kind"][]> = {
 };
 
 export function groundAIFinding(finding: Finding, sources: Source[]): Finding | null {
-  const source = sources.find(s => s.id === finding.sourceId && s.version === finding.sourceVersion && s.status === "Approved");
-  if (!source || !compatibleKinds[finding.category].includes(source.kind)) return null;
+  const source = sources.find(s => s.id === finding.sourceId && s.status === "Approved");
+  if (!source || !compatibleKinds[finding.category]?.includes(source.kind)) return null;
   return {
     ...finding,
-    explanation: `AI located this excerpt for human review against approved source “${source.title}” (${source.id} v${source.version}). The source says: ${source.body}`,
-    suggestion: "Compare this wording with the approved source and revise it if the guideline applies.",
-    replacement: undefined,
+    sourceVersion: source.version,
+    explanation: finding.explanation || `AI located this excerpt for human review against approved source “${source.title}” (${source.id} v${source.version}). The source says: ${source.body}`,
+    suggestion: finding.suggestion || "Compare this wording with the approved source and revise it if the guideline applies.",
+    replacement: finding.replacement,
   };
 }

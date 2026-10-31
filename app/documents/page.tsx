@@ -3,17 +3,20 @@ import { useRef, useState } from "react";
 import { extractDocument, contrastRatio } from "../../lib/documents";
 import type { ExtractedDocument } from "../../lib/documents";
 import { checkPolicy, defaultPolicy } from "../../lib/policy";
-import type { Finding } from "../../components/brandcheck/model";
+import { groundedAssessment } from "../../lib/grounded-assessment";
+import type { DraftAssessment, Finding } from "../../components/brandcheck/model";
 
 export default function DocumentReview() {
   const [document, setDocument] = useState<ExtractedDocument | null>(null);
   const [findings, setFindings] = useState<{ part: number; finding: Finding }[]>([]);
+  const [assessment, setAssessment] = useState<DraftAssessment | null>(null);
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState("");
   const [reviewed, setReviewed] = useState(false); const [focused, setFocused] = useState<number | null>(null);
   const [foreground, setForeground] = useState("#777777"); const [background, setBackground] = useState("#FFFFFF");
   const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[] | null>(null); const [workspaceId, setWorkspaceId] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const ratio = contrastRatio(foreground, background);
+
   function autoFixContrast() {
     const hexToRgb = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
     const rgbToHex = (r: number, g: number, b: number) => "#" + [r, g, b].map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, "0")).join("");
@@ -30,17 +33,67 @@ export default function DocumentReview() {
     setForeground(optimized);
     setMessage(`Optimized text color to ${optimized} for compliant 4.5:1 contrast.`);
   }
+
   async function importFile(file?: File) {
-    if (!file) return; setBusy(true); setMessage(""); setDocument(null); setFindings([]); setReviewed(false);
+    if (!file) return; setBusy(true); setMessage(""); setDocument(null); setFindings([]); setAssessment(null); setReviewed(false);
     try { setDocument(await extractDocument(file)); } catch (error) { setMessage(error instanceof Error ? error.message : "Cannot import this document."); } finally { setBusy(false); if (input.current) input.current.value = ""; }
   }
+
   function review() {
     if (!document) return;
     if (document.parts.reduce((n, part) => n + part.text.length, 0) > 80_000) { setMessage("Edited document exceeds 80,000 characters. Shorten it before review."); return; }
     const checked = document.parts.flatMap((part, index) => checkPolicy(defaultPolicy, "", part.text).map(finding => ({ part: index, finding })));
     setFindings(checked.slice(0, 200));
-    setReviewed(true); setMessage(checked.length > 200 ? `Found ${checked.length} rule findings; showing the first 200. Review a shorter document to inspect the rest.` : "Review complete. Inspect findings and extracted text before making a publication decision.");
+    const fullText = document.parts.map(p => p.text).join("\n\n");
+    const evalAssessment = groundedAssessment(checked.map(c => c.finding), fullText);
+    setAssessment(evalAssessment);
+    setReviewed(true);
+    setMessage(checked.length > 200 ? `Found ${checked.length} rule findings; showing the first 200. Review a shorter document to inspect the rest.` : `Review complete: ${checked.length} findings evaluated against active brand rules.`);
   }
+
+  const [filter, setFilter] = useState<"all" | "attention" | "suggestion">("all");
+
+  function applyCompliantRewrites() {
+    if (!document || !findings.length) return;
+    let fixedCount = 0;
+    const newParts = document.parts.map(part => {
+      let text = part.text;
+      for (const { finding } of findings) {
+        if (finding.replacement && finding.replacement.from && text.includes(finding.replacement.from)) {
+          text = text.replaceAll(finding.replacement.from, finding.replacement.to);
+          fixedCount++;
+        }
+      }
+      return { ...part, text };
+    });
+    setDocument({ ...document, parts: newParts });
+    const checked = newParts.flatMap((part, index) => checkPolicy(defaultPolicy, "", part.text).map(finding => ({ part: index, finding })));
+    setFindings(checked.slice(0, 200));
+    const fullText = newParts.map(p => p.text).join("\n\n");
+    setAssessment(groundedAssessment(checked.map(c => c.finding), fullText));
+    setMessage(`Applied ${fixedCount} compliant replacement${fixedCount === 1 ? "" : "s"} across document sections.`);
+  }
+
+  function applySingleFix(partIndex: number, from: string, to: string) {
+    if (!document) return;
+    const newParts = document.parts.map((p, i) =>
+      i === partIndex ? { ...p, text: p.text.replaceAll(from, to) } : p
+    );
+    setDocument({ ...document, parts: newParts });
+    const checked = newParts.flatMap((part, index) =>
+      checkPolicy(defaultPolicy, "", part.text).map(finding => ({ part: index, finding }))
+    );
+    setFindings(checked.slice(0, 200));
+    const fullText = newParts.map(p => p.text).join("\n\n");
+    setAssessment(groundedAssessment(checked.map(c => c.finding), fullText));
+    setMessage(`Replaced “${from}” with “${to}” in ${document.parts[partIndex].label}.`);
+  }
+
+  const displayedFindings = findings.filter(f => {
+    if (filter === "attention") return f.finding.severity === "Needs attention";
+    if (filter === "suggestion") return f.finding.severity === "Suggestion";
+    return true;
+  });
   async function shared(action?: unknown) {
     const response = await fetch("/api/workspaces", action ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action) } : { cache: "no-store" });
     const result = await response.json() as { error?: string; workspaces?: { id: string; name: string; role: string }[] };
@@ -51,7 +104,7 @@ export default function DocumentReview() {
     let offset = 0;
     const segments = document.parts.map(part => { const start = offset; offset += part.text.length; const end = offset; offset += 2; return { label: part.label, start, end }; });
     const extension = document.name.split(".").pop()?.toLowerCase();
-    return { name: document.name.slice(0,200), type: ["pdf","docx","txt","md"].includes(extension || "") ? extension : "txt", segments };
+    return { name: document.name.slice(0, 200), type: ["pdf", "docx", "txt", "md"].includes(extension || "") ? extension : "txt", segments };
   }
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-main)] font-sans">
@@ -98,7 +151,7 @@ export default function DocumentReview() {
               className="mt-1 block w-full text-xs border border-[var(--border-strong)] rounded-[var(--radius-sm)] p-2 bg-[var(--bg-surface)]"
             />
           </label>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               disabled={busy}
               onClick={() => {
@@ -117,6 +170,27 @@ export default function DocumentReview() {
               className="h-8 px-3 text-xs font-medium rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-surface-raised)] text-[var(--text-main)] hover:bg-[var(--bg-surface-sunken)] transition-colors"
             >
               Load two-page sample
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => {
+                setDocument({
+                  name: "Q4 Enterprise Campaign Brief",
+                  parts: [
+                    { label: "Executive Summary", text: "NovaDesk is designed to simplify daily work for modern organizations." },
+                    { label: "Product Positioning", text: "Flowly guarantees 10x productivity for every team and eliminates 99% of inefficiencies." },
+                    { label: "Competitive Benchmark", text: "Our revolutionary platform delivers results that are guaranteed 100% better than every competitor." },
+                    { label: "Customer ROI Pledges", text: "Customers experience guaranteed 300% ROI within 30 days without hiring additional staff." }
+                  ],
+                  warnings: ["This is a built-in multi-section campaign sample."]
+                });
+                setReviewed(false);
+                setFindings([]);
+                setMessage("");
+              }}
+              className="h-8 px-3 text-xs font-medium rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-surface-raised)] text-[var(--text-main)] hover:bg-[var(--bg-surface-sunken)] transition-colors"
+            >
+              Load 4-section campaign brief
             </button>
           </div>
           <small className="text-[11px] text-[var(--text-subtle)] block">
@@ -146,6 +220,85 @@ export default function DocumentReview() {
               <div className="product-notice my-2" key={i}>{warning}</div>
             ))}
 
+            {reviewed && assessment && (
+              <div className="workspace-assessment-card mb-6 p-6 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] shadow-sm space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-[var(--border-subtle)]">
+                  <div>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-subtle)] block mb-1">
+                      Document Governance Scorecard
+                    </span>
+                    <h3 className="text-xl font-serif text-[var(--text-main)] m-0">
+                      Pre-Publication Compliance Assessment
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className={`editorial-badge ws-risk-badge font-medium text-xs px-3 py-1 rounded-full ${assessment.riskLevel === "Critical"
+                      ? "status-danger"
+                      : assessment.riskLevel === "High"
+                        ? "status-needs_review"
+                        : assessment.riskLevel === "Moderate"
+                          ? "status-draft"
+                          : "status-approved"
+                      }`}>
+                      {assessment.riskLevel} Exposure
+                    </span>
+                    <div className="flex items-center gap-2 pl-3 border-l border-[var(--border-subtle)]">
+                      <span className="text-xs text-[var(--text-muted)] font-medium">Compliance Index:</span>
+                      <strong className="text-lg font-mono text-[var(--text-main)]">{assessment.score}/100</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="w-full bg-[var(--bg-surface-sunken)] rounded-full h-2 overflow-hidden border border-[var(--border-subtle)]">
+                  <div
+                    className={`h-full transition-all duration-500 rounded-full ${assessment.score >= 85
+                      ? "bg-emerald-600"
+                      : assessment.score >= 60
+                        ? "bg-amber-600"
+                        : "bg-rose-600"
+                      }`}
+                    style={{ width: `${assessment.score}%` }}
+                  />
+                </div>
+
+                <p className="text-xs text-[var(--text-main)] leading-relaxed m-0 font-medium">
+                  {assessment.summary}
+                </p>
+
+                {(assessment.claimRiskNote || assessment.toneRiskNote) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                    {assessment.claimRiskNote && (
+                      <div className="p-3 rounded-[var(--radius-sm)] border border-[var(--status-warn-border)] bg-[var(--status-warn-bg)] text-xs text-[var(--status-warn-text)] space-y-1">
+                        <strong className="block font-semibold">Claim Substantiation Alert</strong>
+                        <p className="m-0 leading-relaxed">{assessment.claimRiskNote}</p>
+                      </div>
+                    )}
+                    {assessment.toneRiskNote && (
+                      <div className="p-3 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface-sunken)] text-xs text-[var(--text-muted)] space-y-1">
+                        <strong className="block font-semibold text-[var(--text-main)]">Voice & Tone Notes</strong>
+                        <p className="m-0 leading-relaxed">{assessment.toneRiskNote}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {findings.some(f => f.finding.replacement) && (
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)]">
+                    <span className="text-xs text-[var(--text-muted)]">
+                      Automated replacements available for {findings.filter(f => f.finding.replacement).length} finding(s).
+                    </span>
+                    <button
+                      type="button"
+                      onClick={applyCompliantRewrites}
+                      className="h-8 px-4 text-xs font-medium rounded-[var(--radius-sm)] bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary-hover)] transition-colors shadow-sm flex items-center gap-1.5"
+                    >
+                      <span>✦ Apply All Compliant Fixes across Sections</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               {/* Left Column: Extracted Text */}
               <section className="p-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-4">
@@ -170,6 +323,7 @@ export default function DocumentReview() {
                           });
                           setReviewed(false);
                           setFindings([]);
+                          setAssessment(null);
                         }}
                         maxLength={10000}
                         className="w-full mt-1 p-2 text-xs font-mono border border-[var(--border-strong)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] text-[var(--text-main)]"
@@ -181,15 +335,40 @@ export default function DocumentReview() {
 
               {/* Right Column: Explained Findings */}
               <section className="p-5 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-subtle)]">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[var(--border-subtle)]">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-subtle)] m-0">
                     Explained findings {reviewed ? `(${findings.length})` : ""}
                   </h3>
+                  {reviewed && findings.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setFilter("all")}
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${filter === "all" ? "bg-[var(--accent-primary)] text-white" : "text-[var(--text-muted)] hover:bg-[var(--bg-surface-raised)]"}`}
+                      >
+                        All ({findings.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFilter("attention")}
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${filter === "attention" ? "bg-[var(--accent-primary)] text-white" : "text-[var(--text-muted)] hover:bg-[var(--bg-surface-raised)]"}`}
+                      >
+                        Attention ({findings.filter(f => f.finding.severity === "Needs attention").length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFilter("suggestion")}
+                        className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors ${filter === "suggestion" ? "bg-[var(--accent-primary)] text-white" : "text-[var(--text-muted)] hover:bg-[var(--bg-surface-raised)]"}`}
+                      >
+                        Suggestions ({findings.filter(f => f.finding.severity === "Suggestion").length})
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {!reviewed ? (
                   <p className="text-xs text-[var(--text-subtle)]">Run review to inspect source-grounded findings.</p>
-                ) : findings.length ? (
-                  findings.map(({ part, finding }, index) => (
+                ) : displayedFindings.length ? (
+                  displayedFindings.map(({ part, finding }, index) => (
                     <article className="product-finding" key={index}>
                       <div className="flex items-center justify-between">
                         <a
@@ -199,7 +378,9 @@ export default function DocumentReview() {
                         >
                           {document.parts[part].label}
                         </a>
-                        <span className="editorial-badge">{finding.category}</span>
+                        <span className={`editorial-badge ${finding.severity === "Needs attention" ? "status-danger" : "status-draft"}`}>
+                          {finding.category} · {finding.severity}
+                        </span>
                       </div>
                       <blockquote>{finding.excerpt}</blockquote>
                       <p>{finding.explanation}</p>
@@ -207,10 +388,21 @@ export default function DocumentReview() {
                         {finding.sourceId} v{finding.sourceVersion} · {finding.evidenceStatus}
                       </small>
                       <p className="text-xs text-[var(--text-muted)] font-medium mt-1">Suggested action: {finding.suggestion}</p>
+                      {finding.replacement && (
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={() => applySingleFix(part, finding.replacement!.from, finding.replacement!.to)}
+                            className="h-6 px-2.5 text-[11px] font-medium rounded-[var(--radius-sm)] border border-[var(--border-strong)] bg-[var(--bg-surface-raised)] text-[var(--accent-primary)] hover:bg-[var(--bg-surface-sunken)] transition-colors flex items-center gap-1"
+                          >
+                            <span>Replace with &ldquo;{finding.replacement.to}&rdquo;</span>
+                          </button>
+                        </div>
+                      )}
                     </article>
                   ))
                 ) : (
-                  <p className="text-xs text-[var(--text-muted)]">No rule findings detected. Human review is still required before publication.</p>
+                  <p className="text-xs text-[var(--text-muted)]">No findings match this filter.</p>
                 )}
               </section>
             </div>
@@ -354,11 +546,36 @@ export default function DocumentReview() {
               <button
                 type="button"
                 onClick={autoFixContrast}
-                className="secondary h-8 px-3 text-xs"
+                className="h-8 px-3 text-xs font-medium rounded-[var(--radius-sm)] bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-primary-hover)] transition-colors shadow-sm flex items-center gap-1.5"
               >
-                Auto-adjust to 4.5:1 contrast
+                <span>✦ Auto-optimize to WCAG 4.5:1</span>
               </button>
             )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-[var(--text-muted)]">
+            <span className="text-[11px] font-medium text-[var(--text-subtle)]">Try presets:</span>
+            <button
+              type="button"
+              onClick={() => { setForeground("#1a4332"); setBackground("#ffffff"); }}
+              className="px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] text-[11px] hover:bg-[var(--bg-surface-sunken)] transition-colors"
+            >
+              NovaDesk Dark Green (#1a4332 on #fff)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setForeground("#5a625c"); setBackground("#fbfbfa"); }}
+              className="px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface-raised)] text-[11px] hover:bg-[var(--bg-surface-sunken)] transition-colors"
+            >
+              Muted Body (#5a625c on #fbfbfa)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setForeground("#858e87"); setBackground("#ffffff"); }}
+              className="px-2.5 py-1 rounded-[var(--radius-sm)] border border-[#fca5a5] bg-[#fde8e4] text-[#b91c1c] text-[11px] hover:opacity-90 transition-opacity"
+            >
+              Subtle Gray (#858e87 on #fff) — Fails AA
+            </button>
           </div>
 
           <div

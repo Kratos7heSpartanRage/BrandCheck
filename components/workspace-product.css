@@ -904,3 +904,115 @@
     display: none;
   }
 }
+
+/* =========================================================================
+   Workspace AI Governance Assessment Card
+   ========================================================================= */
+.workspace-assessment-card {
+  margin-top: 14px;
+  padding: 14px 16px;
+  background: var(--bg-surface-raised, #f6f7f5);
+  border: 1px solid var(--border-subtle, #e2e5e0);
+  border-left: 4px solid #1a4332;
+  border-radius: var(--radius-md, 8px);
+}
+
+.workspace-assessment-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.ws-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.ws-risk-critical {
+  background: #fde8e4;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.ws-risk-high {
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fcd34d;
+}
+
+.ws-risk-moderate {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fef08a;
+}
+
+.ws-risk-low {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.ws-score-box {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-subtle, #e2e5e0);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ws-score-val {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.ws-score-val.score-low { color: #b91c1c; }
+.ws-score-val.score-med { color: #b45309; }
+.ws-score-val.score-high { color: #15803d; }
+
+.ws-assessment-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle, #e2e5e0);
+  font-size: 12px;
+  color: var(--text-muted, #5a625c);
+}
+
+.ws-rewrite-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border-subtle, #e2e5e0);
+  border-radius: 6px;
+}
+
+.ws-rewrite-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.ws-rewrite-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-main, #141715);
+  border-left: 2px solid var(--accent-primary, #1a4332);
+  padding-left: 8px;
+  margin: 0;
+}

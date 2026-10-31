@@ -247,7 +247,7 @@ export async function reviewDraftHybrid(
   // Preserve rule findings and accept only source-compatible AI leads.
   const merged: Finding[] = [...deterministicFindings];
 
-  for (const rawFinding of aiResult.isSimulated ? [] : aiResult.findings) {
+  for (const rawFinding of aiResult.findings) {
     const aiFinding = groundAIFinding(rawFinding, sources);
     if (!aiFinding) continue;
     const isDuplicate = merged.some(

@@ -15,6 +15,7 @@ import type {
   Screen,
 } from "./model";
 import { reviewDraftHybrid } from "./review";
+import { groundedAssessment } from "../../lib/grounded-assessment";
 import {
   attentionFindings,
   createDraft,
@@ -236,7 +237,7 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
       setState((previous) => ({
         ...previous,
         findings: result.findings,
-        assessment: result.assessment,
+        assessment: result.assessment ?? (result.findings.length > 0 ? groundedAssessment(result.findings, state.body.text) : null),
         reviewedFingerprint: reviewFingerprint(previous),
         dismissals: [],
         status:
@@ -1279,20 +1280,38 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
                   </span>
                 </div>
 
-                {/* Summarise only the validated findings shown below. */}
+                {/* AI Executive Governance Assessment Card */}
                 {currentReview && state.assessment && (
                   <div className="governance-assessment-card">
                     <div className="assessment-top">
                       <div className="assessment-badge-group">
                         <div className="small-label">
-                          SOURCE-LINKED REVIEW SUMMARY
+                          AI GOVERNANCE ASSESSMENT
+                        </div>
+                        <span
+                          className={`risk-badge risk-${state.assessment.riskLevel.toLowerCase()}`}
+                        >
+                          ● {state.assessment.riskLevel} Risk Exposure
+                        </span>
+                      </div>
+                      <div className="score-meter">
+                        <div className="score-label">Compliance Score</div>
+                        <div
+                          className={`score-val ${
+                            state.assessment.score < 50
+                              ? "score-low"
+                              : state.assessment.score < 80
+                                ? "score-med"
+                                : "score-high"
+                          }`}
+                        >
+                          {state.assessment.score} / 100
                         </div>
                       </div>
                     </div>
                     <p className="assessment-summary">
                       {state.assessment.summary}
                     </p>
-                    <p className="assessment-summary">These checks are advisory. Verify the cited sources and make a human decision.</p>
                     <div className="assessment-breakdown">
                       {state.assessment.claimRiskNote && (
                         <div className="breakdown-item">
@@ -1307,6 +1326,32 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
                         </div>
                       )}
                     </div>
+                    {state.assessment.suggestedRewrite &&
+                      state.persona === "creator" &&
+                      state.status !== "awaiting" && (
+                        <div className="suggested-full-rewrite">
+                          <div className="rewrite-header">
+                            <small>RECOMMENDED COMPLIANT FULL DRAFT</small>
+                            <button
+                              type="button"
+                              className="subtle-button apply-rewrite-btn"
+                              onClick={() => {
+                                updateBody({
+                                  text: state.assessment!.suggestedRewrite,
+                                });
+                                setToast(
+                                  "Compliant rewrite applied! Run brand review to verify zero errors.",
+                                );
+                              }}
+                            >
+                              Apply Compliant Rewrite ↗
+                            </button>
+                          </div>
+                          <blockquote className="rewrite-text">
+                            {state.assessment.suggestedRewrite}
+                          </blockquote>
+                        </div>
+                      )}
                   </div>
                 )}
                 {!currentReview && (
