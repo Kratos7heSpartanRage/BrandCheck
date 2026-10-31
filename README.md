@@ -3,7 +3,7 @@
 BrandCheck connects approved brand guidelines, content review and human approvals in a saved workspace.
 
 Product: https://brandcheck-codestar-judge.freelynx19.chatgpt.site  
-Deployed source branch: https://github.com/Manas-Jain-24/brandcheck/tree/judge-hosted
+Deployed source: https://github.com/Manas-Jain-24/brandcheck
 
 [CodeStar 30 links and requirements](HACKATHON.md) · [Round 2 plan and commitments](docs/BrandCheck_Round_2_Submission.pdf) · [Round 3 report](docs/BrandCheck_Round_3_Finals.pdf) · [Visual upgrade test record](docs/TESTING.md)
 
