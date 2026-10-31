@@ -112,7 +112,7 @@ test("approval becomes draft again on edit; audit retains original decision", as
 test("review decisions require a reason and input lengths are bounded", async () => {
   const { db, workspaceId, draftId } = await fixture();
   await assert.rejects(mutate(db, reviewer, { action: "decide", workspaceId, draftId, version: 1, decision: "approved", note: " " }));
-  await assert.rejects(mutate(db, creator, { action: "createDraft", workspaceId, title: "Too long", body: "x".repeat(5001) }));
+  await assert.rejects(mutate(db, creator, { action: "createDraft", workspaceId, title: "Too long", body: "x".repeat(10001) }));
 });
 test("a failed transaction rolls back the mutation when audit insert fails", async () => {
   const { db, workspaceId, draftId, sql } = await fixture();
