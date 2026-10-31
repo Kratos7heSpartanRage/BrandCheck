@@ -37,6 +37,7 @@ export interface GeminiResponsePayload {
 export interface AiReviewResult {
   findings: Finding[];
   assessment: DraftAssessment | null;
+  model?: string;
   error?: string;
   isSimulated?: boolean;
 }
@@ -464,8 +465,8 @@ export async function runGroundedGeminiReview(
       });
       const result = await response.json() as AiReviewResult;
       if (!response.ok) throw new Error(result.error || "Live review is unavailable.");
-      if (!Array.isArray(result.findings) || !result.assessment) throw new Error("The live review response was incomplete.");
-      return { findings: result.findings, assessment: result.assessment, isSimulated: false };
+      if (!Array.isArray(result.findings)) throw new Error("The live review response was incomplete.");
+      return { findings: result.findings, assessment: null, model: result.model, isSimulated: false };
     } catch (error) {
       return { findings: [], assessment: null, isSimulated: true,
         error: error instanceof Error ? error.message : "Live review is unavailable. Local checks are still available." };
@@ -596,7 +597,8 @@ export async function runGroundedGeminiReview(
 
     return {
       findings: validatedFindings,
-      assessment: payload.assessment,
+      assessment: null,
+      model: modelName,
       isSimulated: false,
     };
   } catch (netError: any) {

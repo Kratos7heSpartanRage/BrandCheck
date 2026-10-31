@@ -23,10 +23,6 @@ const inputSchema = z.object({
   terms: z.array(z.object({ id: z.string().max(80), retired: z.string().max(80), preferred: z.string().max(80), sourceId: z.string().max(80) })).max(40),
   evidence: z.array(z.object({ id: z.string().max(80), claim: z.string().max(200), reference: z.string().max(500), expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), sourceId: z.string().max(80) })).max(40),
 });
-const assessmentSchema = z.object({
-  riskLevel: z.enum(["Low", "Moderate", "High", "Critical"]), score: z.number().finite().min(0).max(100),
-  summary: z.string().max(8_000), claimRiskNote: z.string().max(8_000), toneRiskNote: z.string().max(8_000), suggestedRewrite: z.string().max(10_000),
-});
 const findingSchema = z.object({
   id: z.string().max(160), category: z.enum(["Terminology", "Claims", "Tone", "Accessibility", "Asset usage", "Messaging"]),
   severity: z.enum(["Needs attention", "Suggestion"]), evidenceStatus: z.enum(["Rule match", "Review suggestion", "Evidence needed"]),
@@ -81,9 +77,9 @@ export async function POST(request: Request) {
       result = await run();
     }
     if (result.isSimulated || result.error) return json({ error: "Google Gemini is temporarily unavailable. Local brand checks are still available; please retry the live review." }, 503);
-    const output = z.object({ findings: z.array(findingSchema).max(60), assessment: assessmentSchema, isSimulated: z.literal(false) }).safeParse(result);
+    const output = z.object({ findings: z.array(findingSchema).max(60), isSimulated: z.literal(false) }).safeParse(result);
     if (!output.success) return json({ error: "The AI response could not be validated. Please retry or use local rules." }, 502);
-    return json({ ...output.data, model: env.GEMINI_MODEL || "gemini-3.1-flash-lite" });
+    return json({ ...output.data, assessment: null, model: env.GEMINI_MODEL || "gemini-3.1-flash-lite" });
   } catch {
     return json({ error: "The live review service is unavailable. Please retry or use local rules." }, 503);
   }

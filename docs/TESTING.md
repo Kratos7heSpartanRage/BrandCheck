@@ -25,3 +25,9 @@ Hosted version: 11; deployment succeeded.
 - Gemini OCR was observed to invent text in some runs on a small preview. It is retained only as a collapsed, unverified aid; it does not automatically create findings. Visual leads can also be wrong and require a reviewer to inspect the original.
 - A full hosted confirmation/dismissal cycle using a second real account was not observed. The separate-identity and permission path passed service tests.
 - The history summary is limited to currently returned drafts/events. No automated email or external fact verification is provided.
+
+## Public AI first-impression correction — 31 October 2026
+
+- Google lists `gemini-3.1-flash-lite` as a stable Gemini API model. The old `output/qa/gemini-live-result.json` recorded a 45-second timeout and simulated fallback; it did not establish an invalid model ID. A separate hosted public-example run returned a live response identified as this model.
+- The public example previously displayed the model's freeform 20/100 verdict and counted an AI alt-text lead alongside the same rule finding. It now derives its summary from validated, source-compatible findings, suppresses that duplicate and displays no numeric compliance-like score. Failed AI requests retain labelled rule findings without an AI assessment.
+- The new regression covers the duplicate and an invented model verdict. All 47 tests, strict TypeScript checking and the production build passed locally. The corrected hosted release still needs a post-deployment browser check.

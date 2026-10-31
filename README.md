@@ -61,12 +61,12 @@ Membership invitations grant the exact email access; no invitation email is sent
 
 ## Configuration and verification
 
-Use Node 22.13+ and pnpm 11.25.0. Configure `GEMINI_API_KEY` and optional `GEMINI_MODEL` only as private runtime secrets. Current default model: `gemini-3.1-flash-lite`. Never put secrets in browser code, Git, a `VITE_` value or `.openai/hosting.json`.
+Use Node 22.13+ and pnpm 11.25.0. Configure `GEMINI_API_KEY` and optional `GEMINI_MODEL` only as private runtime secrets. Current default model: `gemini-3.1-flash-lite`, a [Google-listed stable Gemini API model](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite). A recorded 45-second timeout in an earlier local test was a failed request, not evidence of an invalid model ID; the hosted public example subsequently returned a live response with this model. A timeout or quota failure must be labelled as rule-only fallback, never as a successful AI verdict. Never put secrets in browser code, Git, a `VITE_` value or `.openai/hosting.json`.
 
 - `pnpm dev`: local preview with the starter's development sign-in facility.
 - `pnpm exec tsc --noEmit`: strict type checking.
 - `pnpm run db:generate`: additive migration generation; inspect generated SQL/metadata.
-- `node scripts/test-shared-review.mjs`: 46 SQLite-backed service/transport/document tests using actual migrations.
+- `node scripts/test-shared-review.mjs`: 47 service/transport/document and public-review regression tests, including SQLite-backed tests using actual migrations.
 - `node scripts/create-document-fixtures.mjs`: real two-page PDF fixture in ignored `work/`.
 - Build and publish through the Sites skill helpers to retain Worker metadata and apply production migrations.
 

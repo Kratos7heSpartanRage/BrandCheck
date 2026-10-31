@@ -12,12 +12,13 @@ const directory = resolve("work/shared-tests");
 await mkdir(directory, { recursive: true });
 for (const [source, name] of [["lib/shared-review.ts", "shared-review"], ["lib/content.ts", "content"], ["lib/grounded-assessment.ts", "grounded-assessment"], ["lib/visual-grounding.ts", "visual-grounding"], ["lib/policy.ts", "policy"], ["lib/documents.ts", "documents"], ["lib/insights.ts", "insights"], ["lib/revisions.ts", "revisions"], ["components/brandcheck/review.ts", "review"], ["components/brandcheck/model.ts", "model"], ["components/brandcheck/aiReview.ts", "aiReview"]]) {
   let compiled = ts.transpileModule(await readFile(source, "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } }).outputText;
-  compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\/)(review|model|aiReview|policy|content|grounded-assessment)"/g, '"./$1.mjs"');
+  compiled = compiled.replace(/"(?:\.\.\/components\/brandcheck\/|\.\.\/\.\.\/lib\/|\.\/)(review|model|aiReview|policy|content|grounded-assessment)"/g, '"./$1.mjs"');
   await writeFile(resolve(directory, `${name}.mjs`), compiled);
 }
 const { mutateWorkspace: mutate, readWorkspace: read, listWorkspaces: list } = await import(pathToFileURL(resolve(directory, "shared-review.mjs")).href);
 const { defaultPolicy, checkPolicy, fetchGitHubPolicy, policyDiff, policySchema } = await import(pathToFileURL(resolve(directory, "policy.mjs")).href);
 const { runGroundedGeminiReview } = await import(pathToFileURL(resolve(directory, "aiReview.mjs")).href);
+const { reviewDraftHybrid } = await import(pathToFileURL(resolve(directory, "review.mjs")).href);
 const { contrastRatio, extractDocument } = await import(pathToFileURL(resolve(directory, "documents.mjs")).href);
 const { groundAIFinding } = await import(pathToFileURL(resolve(directory, "grounded-assessment.mjs")).href);
 const { checkContent } = await import(pathToFileURL(resolve(directory, "content.mjs")).href);
@@ -242,6 +243,27 @@ test("AI findings require real excerpts and active citations; invalid replacemen
     globalThis.fetch = async () => Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ findings: [valid, { ...valid, excerpt: "Content that was never written" }, { ...valid, sourceId: "invented-source" }], assessment: { riskLevel: "Moderate", score: 50, summary: "Needs review", claimRiskNote: "", toneRiskNote: "", suggestedRewrite: "NovaDesk" } }) }] } }] });
     const result = await runGroundedGeminiReview({ title: "Draft", text: "Flowly launch", channel: "Social", audience: "Teams", image: null }, defaultPolicy.sources, defaultPolicy.terms, [], "test-key-not-a-real-secret");
     assert.equal(result.findings.length, 1); assert.equal(result.findings[0].excerpt, "Flowly"); assert.equal(result.findings[0].replacement, undefined);
+  } finally { globalThis.fetch = originalFetch; }
+});
+test("public hybrid review removes duplicate alt leads and ignores model verdicts", async () => {
+  const originalFetch = globalThis.fetch;
+  const body = { title: "Launch", text: "Flowly guarantees 2x productivity for every team.", channel: "Social", audience: "Teams", image: { name: "novadesk-launch.svg", mime: "image/svg+xml", bytes: 100, sha256: "a".repeat(64), alt: "", decorative: false, source: "approved-demo" } };
+  const source = defaultPolicy.sources.find(item => item.id === "ACCESS-001");
+  try {
+    globalThis.fetch = async () => Response.json({ findings: [
+      { id: "ai:alt", category: "Accessibility", severity: "Needs attention", evidenceStatus: "Review suggestion", location: "Attached Image", excerpt: body.image.name, explanation: "Missing alt text", sourceId: source.id, sourceVersion: source.version, suggestion: "Add alt text" },
+    ], assessment: { riskLevel: "Critical", score: 0, summary: "Invented compliance verdict", claimRiskNote: "", toneRiskNote: "", suggestedRewrite: "Invented rewrite" }, model: "gemini-3.1-flash-lite", isSimulated: false });
+    const live = await reviewDraftHybrid(body, defaultPolicy.sources, defaultPolicy.terms);
+    assert.equal(live.findings.length, 4);
+    assert.equal(live.findings.filter(item => item.category === "Accessibility").length, 1);
+    assert.match(live.assessment.summary, /^4 source-linked findings/);
+    assert.doesNotMatch(JSON.stringify(live.assessment), /Invented/);
+    assert.match(live.notice, /gemini-3\.1-flash-lite/);
+    globalThis.fetch = async () => Response.json({ error: "Gemini timed out" }, { status: 503 });
+    const fallback = await reviewDraftHybrid(body, defaultPolicy.sources, defaultPolicy.terms);
+    assert.equal(fallback.findings.length, 4);
+    assert.equal(fallback.assessment, null);
+    assert.equal(fallback.isSimulated, true);
   } finally { globalThis.fetch = originalFetch; }
 });
 test("GitHub connector uses edge-compatible manual redirects and never follows a redirect", async () => {

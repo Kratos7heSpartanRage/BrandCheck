@@ -9,6 +9,7 @@ import type {
 } from "./model";
 import { runGroundedGeminiReview } from "./aiReview";
 import { DEFAULT_GEMINI_MODEL } from "./model";
+import { groundAIFinding, groundedAssessment } from "../../lib/grounded-assessment";
 
 const makeFinding = (
   source: Source,
@@ -243,14 +244,19 @@ export async function reviewDraftHybrid(
     options.modelName || DEFAULT_GEMINI_MODEL,
   );
 
-  // Merge findings: prioritize deterministic findings, append non-overlapping AI findings
+  // Preserve rule findings and accept only source-compatible AI leads.
   const merged: Finding[] = [...deterministicFindings];
 
-  for (const aiFinding of aiResult.findings) {
+  for (const rawFinding of aiResult.isSimulated ? [] : aiResult.findings) {
+    const aiFinding = groundAIFinding(rawFinding, sources);
+    if (!aiFinding) continue;
     const isDuplicate = merged.some(
       (existing) =>
         existing.category === aiFinding.category &&
-        (existing.excerpt
+        existing.sourceId === aiFinding.sourceId &&
+        ((body.image && existing.category === "Accessibility" &&
+          existing.location.startsWith("Image:") && !body.image.alt.trim()) ||
+        existing.excerpt
           .toLowerCase()
           .includes(aiFinding.excerpt.toLowerCase()) ||
           aiFinding.excerpt
@@ -271,12 +277,12 @@ export async function reviewDraftHybrid(
       ? "AI review simulation completed."
       : "Gemini offline demo active. Enter a Gemini API Key in settings for live SOTA reasoning.";
   } else {
-    notice = `Analyzed live using Google Gemini (${options.modelName || DEFAULT_GEMINI_MODEL}).`;
+    notice = `Analyzed live using Google Gemini (${aiResult.model || options.modelName || DEFAULT_GEMINI_MODEL}).`;
   }
 
   return {
     findings: merged,
-    assessment: aiResult.assessment,
+    assessment: aiResult.isSimulated ? null : groundedAssessment(merged, body.text),
     notice,
     isSimulated: Boolean(aiResult.isSimulated),
   };

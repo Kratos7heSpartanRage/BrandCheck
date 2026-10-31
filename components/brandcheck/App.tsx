@@ -1279,39 +1279,20 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
                   </span>
                 </div>
 
-                {/* AI Executive Governance Assessment Card */}
+                {/* Summarise only the validated findings shown below. */}
                 {currentReview && state.assessment && (
                   <div className="governance-assessment-card">
                     <div className="assessment-top">
                       <div className="assessment-badge-group">
                         <div className="small-label">
-                          AI GOVERNANCE ASSESSMENT
-                        </div>
-                        <span
-                          className={`risk-badge risk-${state.assessment.riskLevel.toLowerCase()}`}
-                        >
-                          ● {state.assessment.riskLevel} Risk Exposure
-                        </span>
-                      </div>
-                      <div className="score-meter">
-                        <div className="score-label">AI advisory score</div>
-                        <div
-                          className={`score-val ${
-                            state.assessment.score < 50
-                              ? "score-low"
-                              : state.assessment.score < 80
-                                ? "score-med"
-                                : "score-high"
-                          }`}
-                        >
-                          {state.assessment.score} / 100
+                          SOURCE-LINKED REVIEW SUMMARY
                         </div>
                       </div>
                     </div>
                     <p className="assessment-summary">
                       {state.assessment.summary}
                     </p>
-                    <p className="assessment-summary">AI estimates can be wrong. This score is not a compliance certification; verify sources and make a human decision.</p>
+                    <p className="assessment-summary">These checks are advisory. Verify the cited sources and make a human decision.</p>
                     <div className="assessment-breakdown">
                       {state.assessment.claimRiskNote && (
                         <div className="breakdown-item">
@@ -1331,7 +1312,7 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
                       state.status !== "awaiting" && (
                         <div className="suggested-full-rewrite">
                           <div className="rewrite-header">
-                            <small>SUGGESTED FULL DRAFT — REVIEW BEFORE USE</small>
+                            <small>DIRECT SOURCE-LINKED REPLACEMENTS — REVIEW BEFORE USE</small>
                             <button
                               type="button"
                               className="subtle-button apply-rewrite-btn"
@@ -1340,11 +1321,11 @@ export default function App({ autoStart = false }: { autoStart?: boolean } = {})
                                   text: state.assessment!.suggestedRewrite,
                                 });
                                 setToast(
-                                  "Suggested rewrite applied. Run review again and verify the wording and evidence.",
+                                  "Source-linked replacements applied. Run review again and verify the wording and evidence.",
                                 );
                               }}
                             >
-                              Apply suggested rewrite ↗
+                              Apply source-linked replacements ↗
                             </button>
                           </div>
                           <blockquote className="rewrite-text">
