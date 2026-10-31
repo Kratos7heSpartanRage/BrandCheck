@@ -8,6 +8,15 @@
 
 ---
 
+### ⚡ 60-Second Judge Fast-Track
+
+Judges evaluating the live deployment independently can follow these three primary paths:
+1. **Interactive Demo Desk ([/example](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/example)):** Instant, zero-login evaluation. Inspect real-time findings against the NovaDesk brand pack, test one-click batch terminology replacements, inspect preflight scores, and switch to reviewer mode.
+2. **Document Intake Desk ([/documents](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/documents)):** Upload native text-based **PDF** or **Word (.docx)** files. Verify paragraph/page-linked findings, test the interactive WCAG 2.2 color contrast optimizer, and test document handoff.
+3. **Multi-Tenant Workspace ([/workspace](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/workspace)):** Authenticated enterprise collaboration. Enforces server-side RBAC (Admin, Creator, Reviewer), anti-self-approval protection, optimistic concurrency (CAS), revision diffs, and audit trail.
+
+---
+
 ## Overview
 
 BrandCheck is an editorial review and brand governance platform designed to help teams inspect, verify, and approve content before publication against authoritative brand guidelines. 
@@ -141,6 +150,26 @@ All mutations require the current draft/policy revision number to prevent stale 
   ```bash
   pnpm run build
   ```
+
+---
+
+## Product Roadmap & Future Development Plan
+
+BrandCheck’s architecture is deliberately designed as an extensible governance engine. The roadmap below outlines the post-finals development trajectory:
+
+### Phase 1: Ingestion & CMS Connectors (Q1)
+- **Native Document Add-ins:** Direct bi-directional plugins for **Google Docs** and **Microsoft Word 365** to surface brand guideline checks inline within authoring environments.
+- **Enterprise CMS Integrations:** Automated ingestion and compliance webhooks for **Notion**, **Confluence**, and **Webflow**.
+- **Serverless OCR Extension:** Client-fallback serverless Tesseract/OCR pipeline for scanned image-only PDFs and rasterized marketing collateral.
+
+### Phase 2: Advanced Governance & Escalation (Q2)
+- **Multi-Stage Approval Workflows:** Tiered approval chains routing drafts through specialized personas (e.g., *Copywriter* $\rightarrow$ *Brand Director* $\rightarrow$ *Legal Counsel*).
+- **Proactive Notification Hub:** Real-time compliance alerts, revision mentions, and decision digests delivered via **Slack**, **Microsoft Teams**, and email webhooks.
+- **Automated Evidence Expiry Monitoring:** Background cron workers scanning active claims and automatically alerting reviewers 30 days prior to substantiating evidence expiration.
+
+### Phase 3: Headless Continuous Compliance (Q3)
+- **BrandCheck CI/CD Linter (`brandcheck-cli`):** Standalone headless CLI tool for GitHub Actions and GitLab CI, checking Markdown docs, static site copy, and pull requests on commit.
+- **Cryptographic Audit Ledger:** Signed verification hashes for compliance exports, providing verifiable zero-knowledge tamper resistance for SOC2 and ISO compliance.
 
 ---
 
