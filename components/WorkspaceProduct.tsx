@@ -700,4 +700,3 @@ export default function WorkspaceProduct() {
     </div>
   </div>;
 }
-}
