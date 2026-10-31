@@ -76,7 +76,13 @@ export async function POST(request: Request) {
       await new Promise(resolve => setTimeout(resolve, 800));
       result = await run();
     }
-    if (result.isSimulated || result.error) return json({ error: "Google Gemini is temporarily unavailable. Local brand checks are still available; please retry the live review." }, 503);
+    if (result.isSimulated || result.error) {
+      const failure = result.error || "";
+      if (/timeout|timed out|abort/i.test(failure)) return json({ error: "Google Gemini timed out. Local brand checks are still available; retry live review later." }, 504);
+      if (/quota|rate limit|resource exhausted|\b429\b/i.test(failure)) return json({ error: "Google Gemini's request limit was reached. Local brand checks are still available; retry later." }, 429);
+      if (/model.*(?:not found|unsupported|unavailable)|\b404\b/i.test(failure)) return json({ error: "The configured Gemini model was rejected. Local brand checks are still available; the service owner must check GEMINI_MODEL." }, 503);
+      return json({ error: "Google Gemini is temporarily unavailable. Local brand checks are still available; please retry the live review." }, 503);
+    }
     const output = z.object({ findings: z.array(findingSchema).max(60), isSimulated: z.literal(false) }).safeParse(result);
     if (!output.success) return json({ error: "The AI response could not be validated. Please retry or use local rules." }, 502);
     return json({ ...output.data, assessment: null, model: env.GEMINI_MODEL || "gemini-3.1-flash-lite" });
