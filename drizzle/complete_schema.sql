@@ -72,3 +72,4 @@ CREATE TABLE IF NOT EXISTS `workspace_policies` (
 	`mutation` text NOT NULL,
 	FOREIGN KEY (`workspace_id`) REFERENCES `workspaces`(`id`) ON UPDATE no action ON DELETE no action
 );
+

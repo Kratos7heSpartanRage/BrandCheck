@@ -2,7 +2,7 @@
 
 Verified 31 October 2026 (IST). This file records what was tested; it is not a submission or a claim about event eligibility.
 
-Live product: https://brandcheck-codestar-judge.freelynx19.chatgpt.site/workspace  
+Live product: https://brandcheck.manasj1234567890.workers.dev/workspace  
 Public source: https://github.com/Manas-Jain-24/brandcheck  
 Application code commit: `a049c90895e2ab569e72878e99faf1bcfdda36f6`  
 Hosted version: 11; deployment succeeded.

@@ -7,9 +7,9 @@ Last checked: 31 October 2026 (IST). This is a working checklist, not a replacem
 - [Official CodeStar 30 event page](https://wecodecoders.in/events/codestar-30)
 - [Inkloom AI problem statement](https://docs.google.com/document/d/1CeytklFethcPXRpwvdG4wL6AWfncC-rV/edit?usp=sharing&ouid=103477454114669134890&rtpof=true&sd=true)
 - [Finalist confirmation form](https://konfhub.com/codestar30-hackathon) — the finalist email says the team leader completes this and the ₹399 team fee once. Payment is handled by the team, not this repository.
-- [Live BrandCheck product](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/workspace)
+- [Live BrandCheck product](https://brandcheck.manasj1234567890.workers.dev/workspace)
 - [Public source repository](https://github.com/Manas-Jain-24/brandcheck)
-- [Public example without sign-in](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/example)
+- [Public example without sign-in](https://brandcheck.manasj1234567890.workers.dev/example)
 
 The Round 3 submission form link has not been supplied in the materials recorded here. Use the link posted in the official group when it is announced.
 

@@ -2,7 +2,7 @@
 
 > Editorial governance and brand compliance workspace with source-grounded verification and human-in-the-loop approvals.
 
-- **Live Product:** [https://brandcheck-codestar-judge.freelynx19.chatgpt.site](https://brandcheck-codestar-judge.freelynx19.chatgpt.site)
+- **Live Product:** [https://brandcheck.manasj1234567890.workers.dev](https://brandcheck.manasj1234567890.workers.dev)
 - **Source Repository:** [https://github.com/Manas-Jain-24/brandcheck](https://github.com/Manas-Jain-24/brandcheck)
 - **Documentation:** [CodeStar 30 Requirements](HACKATHON.md) · [Round 2 Submission](docs/BrandCheck_Round_2_Submission.pdf) · [Round 3 Finals Report](docs/BrandCheck_Round_3_Finals.pdf) · [Verification & Test Record](docs/TESTING.md)
 
@@ -11,9 +11,9 @@
 ### ⚡ 60-Second Judge Fast-Track
 
 Judges evaluating the live deployment independently can follow these three primary paths:
-1. **Interactive Demo Desk ([/example](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/example)):** Instant, zero-login evaluation. Inspect real-time findings against the NovaDesk brand pack, test one-click batch terminology replacements, inspect preflight scores, and switch to reviewer mode.
-2. **Document Intake Desk ([/documents](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/documents)):** Upload native text-based **PDF** or **Word (.docx)** files. Verify paragraph/page-linked findings, test the interactive WCAG 2.2 color contrast optimizer, and test document handoff.
-3. **Multi-Tenant Workspace ([/workspace](https://brandcheck-codestar-judge.freelynx19.chatgpt.site/workspace)):** Authenticated enterprise collaboration. Enforces server-side RBAC (Admin, Creator, Reviewer), anti-self-approval protection, optimistic concurrency (CAS), revision diffs, and audit trail.
+1. **Interactive Demo Desk ([/example](https://brandcheck.manasj1234567890.workers.dev/example)):** Instant, zero-login evaluation. Inspect real-time findings against the NovaDesk brand pack, test one-click batch terminology replacements, inspect preflight scores, and switch to reviewer mode.
+2. **Document Intake Desk ([/documents](https://brandcheck.manasj1234567890.workers.dev/documents)):** Upload native text-based **PDF** or **Word (.docx)** files. Verify paragraph/page-linked findings, test the interactive WCAG 2.2 color contrast optimizer, and test document handoff.
+3. **Multi-Tenant Workspace ([/workspace](https://brandcheck.manasj1234567890.workers.dev/workspace)):** Authenticated enterprise collaboration. Enforces server-side RBAC (Admin, Creator, Reviewer), anti-self-approval protection, optimistic concurrency (CAS), revision diffs, and audit trail.
 
 ---
 
